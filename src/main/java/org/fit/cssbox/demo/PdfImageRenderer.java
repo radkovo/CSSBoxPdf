@@ -38,6 +38,7 @@ import org.fit.cssbox.io.DocumentSource;
 import org.fit.cssbox.layout.BrowserCanvas;
 import org.fit.cssbox.layout.BrowserConfig;
 import org.fit.cssbox.layout.Viewport;
+import org.fit.cssbox.render.PDFRenderer;
 import org.fit.cssbox.render.SVGRenderer;
 import org.w3c.dom.Document;
 import org.xml.sax.SAXException;
@@ -52,7 +53,7 @@ import cz.vutbr.web.css.MediaSpec;
  */
 public class PdfImageRenderer
 {
-    public enum Type { PNG, SVG }
+    public enum Type { PNG, SVG, PDF };
     
     private String mediaType = "screen";
     private Dimension windowSize;
@@ -91,7 +92,7 @@ public class PdfImageRenderer
      * @return true in case of success, false otherwise
      * @throws SAXException 
      */
-    public boolean renderURL(String urlstring, OutputStream out, Type type) throws IOException, SAXException
+    public boolean renderURL(String urlstring, OutputStream out, Type type, String pageFormat) throws IOException, SAXException
     {
         if (!urlstring.startsWith("http:") &&
             !urlstring.startsWith("ftp:") &&
@@ -100,11 +101,11 @@ public class PdfImageRenderer
         
         //Open the network connection 
         DocumentSource docSource = new DefaultDocumentSource(urlstring);
-        
+      
         //Parse the input document
         DOMSource parser = new DefaultDOMSource(docSource);
         Document doc = parser.parse();
-        
+       
         //create the media specification
         MediaSpec media = new MediaSpec(mediaType);
         media.setDimensions(windowSize.width, windowSize.height);
@@ -113,12 +114,13 @@ public class PdfImageRenderer
         //Create the CSS analyzer
         DOMAnalyzer da = new DOMAnalyzer(doc, docSource.getURL());
         da.setMediaSpec(media);
+        
         da.attributesToStyles(); //convert the HTML presentation attributes to inline styles
         da.addStyleSheet(null, CSSNorm.stdStyleSheet(), DOMAnalyzer.Origin.AGENT); //use the standard style sheet
         da.addStyleSheet(null, CSSNorm.userStyleSheet(), DOMAnalyzer.Origin.AGENT); //use the additional style sheet
         da.addStyleSheet(null, CSSNorm.formsStyleSheet(), DOMAnalyzer.Origin.AGENT); //render form fields using css
         da.getStyleSheets(); //load the author style sheets
-        
+
         BrowserCanvas contentCanvas = new BrowserCanvas(da.getRoot(), da, docSource.getURL());
         contentCanvas.setAutoMediaUpdate(false); //we have a correct media specification, do not update
         contentCanvas.getConfig().setClipViewport(cropWindow);
@@ -138,7 +140,13 @@ public class PdfImageRenderer
             writeSVG(contentCanvas.getViewport(), w);
             w.close();
         }
-        
+        else if (type == Type.PDF)
+        {
+            setDefaultFonts(contentCanvas.getConfig());
+            contentCanvas.createLayout(windowSize);
+            writePDF(contentCanvas.getViewport(), out, pageFormat);
+        }
+
         docSource.close();
 
         return true;
@@ -170,20 +178,43 @@ public class PdfImageRenderer
         vp.draw(render);
         render.close();
     }
+
+    /**
+     * Renders the viewport using an PDFRenderer to the given output writer.
+     * @param vp
+     * @param out
+     * @throws IOException
+     */
+    protected void writePDF(Viewport vp, OutputStream out, String pageFormat) throws IOException
+    {
+        //obtain the viewport bounds depending on whether we are clipping to viewport size or using the whole page
+        int w = vp.getClippedContentBounds().width;
+        int h = vp.getClippedContentBounds().height;
+        
+        PDFRenderer render = new PDFRenderer(w, h, out, pageFormat);
+        render.setFontPath("/Library/Fonts/Microsoft/");
+        vp.draw(render);
+        render.close();
+    }    
+    
     
     //=================================================================================
     
     public static void main(String[] args)
     {
-        if (args.length != 3)
-        {
-            System.err.println("Usage: ImageRenderer <url> <output_file> <format>");
+        
+        if (args.length != 3 && !(args.length == 4 && args[2].equalsIgnoreCase("pdf"))) {
+            
+            System.err.println("Usage: ImageRenderer <url> <output_file> <format> <pdf_page_format>");
             System.err.println();
             System.err.println("Renders a document at the specified URL and stores the document image");
             System.err.println("to the specified file.");
             System.err.println("Supported formats:");
-            System.err.println("png: a Portable Network Graphics file (bitmap image)");
-            System.err.println("svg: a SVG file (vector image)");
+            System.err.println("   png: a Portable Network Graphics file (bitmap image)");
+            System.err.println("   svg: a SVG file (vector image)");
+            System.err.println("   pdf: a PDF file\n");
+            System.err.println("pdf_page_format: optional parameter and only with argument pdf");
+            System.err.println("Supported page formats: A0, A1, A2, A3, A4, A5, A6 or LETTER");
             System.exit(0);
         }
         
@@ -193,23 +224,24 @@ public class PdfImageRenderer
                 type = Type.PNG;
             else if (args[2].equalsIgnoreCase("svg"))
                 type = Type.SVG;
+            else if (args[2].equalsIgnoreCase("pdf"))
+                type = Type.PDF;
             else
             {
                 System.err.println("Error: unknown format");
                 System.exit(0);
             }
+           
+            FileOutputStream os = new FileOutputStream(args[1]);           
+            ImageRenderer r = new ImageRenderer();
             
-            FileOutputStream os = new FileOutputStream(args[1]);
-            
-            PdfImageRenderer r = new PdfImageRenderer();
-            r.renderURL(args[0], os, type);
-            
+            if (args.length == 4) r.renderURL(args[0], os, type, args[3]);
+            else r.renderURL(args[0], os, type, "");
+   
             os.close();
             System.err.println("Done.");
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
         }
-        
     }
-    
 }
