@@ -1,7 +1,9 @@
 /**
- * ImageRenderer.java
- * Copyright (c) 2005-2014 Radek Burget
+ * PdfImageRenderer.java
+ * Copyright (c) 2015 Zbynek Cervinka
  *
+ * PdfImageRenderer is an extension to CSSBox library.
+ * 
  * CSSBox is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -15,7 +17,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with CSSBox. If not, see <http://www.gnu.org/licenses/>.
  *
- * Created on 5.2.2009, 12:00:02 by burgetr
+ * Created on 16.5.2015, 8:26:29 by Zbynek Cervinka
  */
 package org.fit.cssbox.demo;
 
@@ -205,7 +207,7 @@ public class PdfImageRenderer
         
         if (args.length != 3 && !(args.length == 4 && args[2].equalsIgnoreCase("pdf"))) {
             
-            System.err.println("Usage: ImageRenderer <url> <output_file> <format> <pdf_page_format>");
+            System.err.println("Usage: PdfImageRenderer <url> <output_file> <format> <pdf_page_format>");
             System.err.println();
             System.err.println("Renders a document at the specified URL and stores the document image");
             System.err.println("to the specified file.");
@@ -233,7 +235,7 @@ public class PdfImageRenderer
             }
            
             FileOutputStream os = new FileOutputStream(args[1]);           
-            ImageRenderer r = new ImageRenderer();
+            PdfImageRenderer r = new PdfImageRenderer();
             
             if (args.length == 4) r.renderURL(args[0], os, type, args[3]);
             else r.renderURL(args[0], os, type, "");
