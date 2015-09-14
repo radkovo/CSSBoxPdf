@@ -58,13 +58,12 @@ import cz.vutbr.web.css.TermColor;
  */
 public class PDFRenderer implements BoxRenderer
 {
-    private float resCoef, rootWidth, rootHeight;
+    private float resCoef, rootHeight;
     
     // PDFBox variables
     private PDDocument doc = null;
     private PDPage page = null;
     private PDPageContentStream content = null;
-    private PDRectangle mediabox = null;
     private PDRectangle pageFormat = null;
     
     // page help variables
@@ -110,7 +109,6 @@ public class PDFRenderer implements BoxRenderer
      * initialize the variables
      */
     public PDFRenderer(int rootWidth, int rootHeight, OutputStream out, String pageFormat) {
-        this.rootWidth = rootWidth;
         this.rootHeight = rootHeight;
         this.pathToSave = out;
         this.pageCount = 0;
@@ -1285,7 +1283,6 @@ public class PDFRenderer implements BoxRenderer
             page = new PDPage(pageFormat);
             doc.addPage(page);
             content = new PDPageContentStream(doc, page);
-            mediabox = page.findMediaBox();
         } catch (Exception e) {
             e.printStackTrace();
             return -1;
@@ -1303,7 +1300,6 @@ public class PDFRenderer implements BoxRenderer
                 page = new PDPage(pageFormat);
                 doc.addPage(page);
                 content = new PDPageContentStream(doc, page);
-                mediabox = page.findMediaBox();
             } 
             
             catch (IOException e) { 
