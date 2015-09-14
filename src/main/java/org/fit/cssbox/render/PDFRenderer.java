@@ -23,20 +23,21 @@ package org.fit.cssbox.render;
 import java.awt.Color;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Vector;
 
-import org.apache.pdfbox.encoding.PdfDocEncoding;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.edit.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.graphics.xobject.PDPixelMap;
-import org.apache.pdfbox.pdmodel.graphics.xobject.PDXObjectImage;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.fit.cssbox.layout.BackgroundImage;
 import org.fit.cssbox.layout.Box;
 import org.fit.cssbox.layout.ElementBox;
@@ -115,31 +116,31 @@ public class PDFRenderer implements BoxRenderer
         
         switch (pageFormat) {
             case "A0":
-                this.pageFormat = PDPage.PAGE_SIZE_A0;
+                this.pageFormat = PDRectangle.A0;
                 break;
             case "A1":
-                this.pageFormat = PDPage.PAGE_SIZE_A1;
+                this.pageFormat = PDRectangle.A1;
                 break;
             case "A2":
-                this.pageFormat = PDPage.PAGE_SIZE_A2;
+                this.pageFormat = PDRectangle.A2;
                 break;
             case "A3":
-                this.pageFormat = PDPage.PAGE_SIZE_A3;
+                this.pageFormat = PDRectangle.A3;
                 break;
             case "A4":
-                this.pageFormat = PDPage.PAGE_SIZE_A4;
+                this.pageFormat = PDRectangle.A4;
                 break;
             case "A5":
-                this.pageFormat = PDPage.PAGE_SIZE_A5;
+                this.pageFormat = PDRectangle.A5;
                 break;              
             case "A6":
-                this.pageFormat = PDPage.PAGE_SIZE_A6;
+                this.pageFormat = PDRectangle.A6;
                 break;
             case "LETTER":
-                this.pageFormat = PDPage.PAGE_SIZE_LETTER;
+                this.pageFormat = PDRectangle.LETTER;
                 break;
             default:
-                this.pageFormat = PDPage.PAGE_SIZE_A4;
+                this.pageFormat = PDRectangle.A4;
                 break;
         }
         
@@ -1224,7 +1225,7 @@ public class PDFRenderer implements BoxRenderer
         	fontTable.add(new fontTableRecord(fontFamily, isBold, isItalic, font));
         }
         
-        font.setFontEncoding(new PdfDocEncoding());
+        //font.setFontEncoding(new PdfDocEncoding()); //TODO is this useful?
         
         // replaces several characters with UNICODE encoding with UTF-8 equivalent
         // 		- not needed in Apache PDFBox 2.0.0
@@ -1315,7 +1316,7 @@ public class PDFRenderer implements BoxRenderer
      */
     private int changeRecentPageToPDFBox(int i) {
         
-        page = (PDPage)doc.getDocumentCatalog().getAllPages().get(i);
+        page = (PDPage)doc.getDocumentCatalog().getPages().get(i);
         
         try {
             content.close();
@@ -1334,7 +1335,8 @@ public class PDFRenderer implements BoxRenderer
         
         try {
             content.setNonStrokingColor(bgColor);
-            content.fillRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
+            content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
+            content.fill();
         } catch (IOException e) {
             e.printStackTrace();
             return -1;
@@ -1351,7 +1353,8 @@ public class PDFRenderer implements BoxRenderer
         try {
             content.setLineWidth(lineWidth);
             content.setNonStrokingColor(bgColor);
-            content.fillRect(x, y, width, height);
+            content.addRect(x, y, width, height);
+            content.fill();
         } catch (IOException e) {
 
             e.printStackTrace();
@@ -1368,9 +1371,10 @@ public class PDFRenderer implements BoxRenderer
         y = pageFormat.getHeight() - height - y;
 
         try {
-            PDXObjectImage ximage = new PDPixelMap(doc, img);
-            // insert in PDF
-            content.drawXObject(ximage, x, y, width, height);
+            //PDXObjectImage ximage = new PDPixelMap(doc, img);
+            //content.drawXObject(ximage, x, y, width, height);
+            PDImageXObject ximage = LosslessFactory.createFromImage(doc, img);
+            content.drawImage(ximage, x, y, width, height);
         } catch (IOException e) {
         	e.printStackTrace();
             return -1;	
@@ -1389,8 +1393,8 @@ public class PDFRenderer implements BoxRenderer
         try {
             content.beginText();
             content.setFont(font, fontSize);
-            content.moveTextPositionByAmount(x, y);
-            content.drawString(textToInsert);
+            content.newLineAtOffset(x, y);
+            content.showText(textToInsert);
             content.endText();
 
             // underlines text if text is set underlined
@@ -1405,7 +1409,8 @@ public class PDFRenderer implements BoxRenderer
                     yOffset = fontSize/5.7f;
                 }
                 
-                content.fillRect(x, y-yOffset, strokeWidth, resCoef*lineHeightCalibration);
+                content.addRect(x, y-yOffset, strokeWidth, resCoef*lineHeightCalibration);
+                content.fill();
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -1423,10 +1428,10 @@ public class PDFRenderer implements BoxRenderer
         PDFont font;
         // tries to load font from given folder
         try {
-            if (isBold && isItalic) { font = PDTrueTypeFont.loadTTF(doc, pathToTTFFonts + fontFamily + " Bold Italic.ttf"); }
-            else if (isBold) { font = PDTrueTypeFont.loadTTF(doc, pathToTTFFonts + fontFamily + " Bold.ttf"); }
-            else if (isItalic) { font = PDTrueTypeFont.loadTTF(doc, pathToTTFFonts + fontFamily + " Italic.ttf"); }
-            else { font = PDTrueTypeFont.loadTTF(doc, pathToTTFFonts + fontFamily + ".ttf"); }
+            if (isBold && isItalic) { font = PDType0Font.load(doc, new File(pathToTTFFonts + fontFamily + " Bold Italic.ttf")); }
+            else if (isBold) { font = PDType0Font.load(doc, new File(pathToTTFFonts + fontFamily + " Bold.ttf")); }
+            else if (isItalic) { font = PDType0Font.load(doc, new File(pathToTTFFonts + fontFamily + " Italic.ttf")); }
+            else { font = PDType0Font.load(doc, new File(pathToTTFFonts + fontFamily + ".ttf")); }
         }
         // if not successful load the font from Apache PDFBox
         catch (IOException e) {
