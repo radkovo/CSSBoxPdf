@@ -73,10 +73,8 @@ public class Node {
     public Vector<Node> getAllChildren() { 
         
         if (this.nodeChildren.size() == 0) return null;
-
         // return a copy and original stays untouched
-        Vector copyChildren = new Vector(this.nodeChildren);
-        return copyChildren; 
+        return new Vector<Node>(this.nodeChildren);
     }
     
     /**

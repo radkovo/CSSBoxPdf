@@ -40,6 +40,7 @@ import org.apache.pdfbox.pdmodel.graphics.xobject.PDXObjectImage;
 import org.fit.cssbox.layout.BackgroundImage;
 import org.fit.cssbox.layout.Box;
 import org.fit.cssbox.layout.ElementBox;
+import org.fit.cssbox.layout.LengthSet;
 import org.fit.cssbox.layout.ReplacedBox;
 import org.fit.cssbox.layout.ReplacedContent;
 import org.fit.cssbox.layout.ReplacedImage;
@@ -57,13 +58,12 @@ import cz.vutbr.web.css.TermColor;
  */
 public class PDFRenderer implements BoxRenderer
 {
-    private float resCoef, rootWidth, rootHeight;
+    private float resCoef, rootHeight;
     
     // PDFBox variables
     private PDDocument doc = null;
     private PDPage page = null;
     private PDPageContentStream content = null;
-    private PDRectangle mediabox = null;
     private PDRectangle pageFormat = null;
     
     // page help variables
@@ -109,7 +109,6 @@ public class PDFRenderer implements BoxRenderer
      * initialize the variables
      */
     public PDFRenderer(int rootWidth, int rootHeight, OutputStream out, String pageFormat) {
-        this.rootWidth = rootWidth;
         this.rootHeight = rootHeight;
         this.pathToSave = out;
         this.pageCount = 0;
@@ -1061,73 +1060,88 @@ public class PDFRenderer implements BoxRenderer
      * @returns 0 for inserted OK, -1 for exception occurs and 1 for border out of page
      */
     private int drawBorder(ElementBox elem, int i, float plusOffset, float plusHeight) {
-   	    	
-    	// counts the distance between top of the document and the start/end of the page
-        float pageStart = i*pageFormat.getHeight();
-        float pageEnd = (i+1)*pageFormat.getHeight();
-        
-        // checks if border is not completely out of page
-        if (elem.getAbsoluteContentY()*resCoef+plusOffset > pageEnd || (elem.getAbsoluteContentY()+plusOffset+elem.getContentHeight())*resCoef+plusHeight+plusOffset < pageStart)
-            return 1;
 
-        // calculates resized X,Y coordinates in CSSBox form
-        float border_x = elem.getAbsoluteContentX()*resCoef;
-        float border_y = pageFormat.getHeight() - (elem.getAbsoluteContentY()*resCoef+plusOffset)+i*pageFormat.getHeight() - elem.getContentHeight()*resCoef-plusHeight;     
-
-        // calculates the padding for each side
-        float paddingTop =    elem.getPadding().top*resCoef;
-        float paddingRight =  elem.getPadding().right*resCoef;
-        float paddingBottom = elem.getPadding().bottom*resCoef;
-        float paddingLeft =   elem.getPadding().left*resCoef;
-        
-        // calculates the border size for each side
-        float borderTopSize =    elem.getBorder().top*resCoef;
-        float borderRightSize =  elem.getBorder().right*resCoef;
-        float borderBottomSize = elem.getBorder().bottom*resCoef;          
-        float borderLeftSize =   elem.getBorder().left*resCoef;      
-
-        // calculate the element size
-        float elemWidth =  elem.getContentWidth()*resCoef;
-        float elemHeight = elem.getContentHeight()*resCoef+plusHeight;
-
-        float bX, bY, bWidth, bHeight;
-        try {
-
-            // left border
-            bX = border_x-borderLeftSize-paddingLeft;
-            bY = border_y-borderBottomSize-paddingBottom;
-            bWidth = borderLeftSize;
-            bHeight = elemHeight+borderTopSize+borderBottomSize+paddingTop+paddingBottom;
-            drawRectanglePDFBox(borderLeftSize, getBorderColor(elem, "left"), bX, bY, bWidth, bHeight);
+        final LengthSet border = elem.getBorder();
+        if (border.top > 0 || border.right > 0 || border.bottom > 0 || border.right > 0)
+        {
+        	// counts the distance between top of the document and the start/end of the page
+            final float pageStart = i*pageFormat.getHeight();
+            final float pageEnd = (i+1)*pageFormat.getHeight();
             
-            // right border       
-            bX = border_x+elemWidth+paddingRight;
-            bY = border_y-borderBottomSize-paddingBottom;
-            bWidth = borderRightSize;
-            bHeight = elemHeight+borderTopSize+borderBottomSize+paddingTop+paddingBottom;
-            drawRectanglePDFBox(borderRightSize, getBorderColor(elem, "right"), bX, bY, bWidth, bHeight);
+            // checks if border is not completely out of page
+            if (elem.getAbsoluteContentY()*resCoef+plusOffset > pageEnd || (elem.getAbsoluteContentY()+plusOffset+elem.getContentHeight())*resCoef+plusHeight+plusOffset < pageStart)
+                return 1;
+    
+            // calculates resized X,Y coordinates in CSSBox form
+            final float border_x = elem.getAbsoluteContentX()*resCoef;
+            final float border_y = pageFormat.getHeight() - (elem.getAbsoluteContentY()*resCoef+plusOffset)+i*pageFormat.getHeight() - elem.getContentHeight()*resCoef-plusHeight;     
+    
+            // calculates the padding for each side
+            final float paddingTop =    elem.getPadding().top*resCoef;
+            final float paddingRight =  elem.getPadding().right*resCoef;
+            final float paddingBottom = elem.getPadding().bottom*resCoef;
+            final float paddingLeft =   elem.getPadding().left*resCoef;
             
-            // top border
-        	bX = border_x-borderLeftSize-paddingLeft;
-        	bY = border_y+elemHeight+paddingTop;
-        	bWidth = elemWidth+borderLeftSize+borderRightSize+paddingLeft+paddingRight;
-        	bHeight = borderTopSize;
-            drawRectanglePDFBox(borderTopSize, getBorderColor(elem, "top"), bX, bY, bWidth, bHeight);
+            // calculates the border size for each side
+            final float borderTopSize =    border.top*resCoef;
+            final float borderRightSize =  border.right*resCoef;
+            final float borderBottomSize = border.bottom*resCoef;          
+            final float borderLeftSize =   border.left*resCoef;      
+    
+            // calculate the element size
+            final float elemWidth =  elem.getContentWidth()*resCoef;
+            final float elemHeight = elem.getContentHeight()*resCoef+plusHeight;
+    
+            float bX, bY, bWidth, bHeight;
+            try {
+    
+                // left border
+                if (borderLeftSize > 0)
+                {
+                    bX = border_x-borderLeftSize-paddingLeft;
+                    bY = border_y-borderBottomSize-paddingBottom;
+                    bWidth = borderLeftSize;
+                    bHeight = elemHeight+borderTopSize+borderBottomSize+paddingTop+paddingBottom;
+                    drawRectanglePDFBox(borderLeftSize, getBorderColor(elem, "left"), bX, bY, bWidth, bHeight);
+                }
+                
+                // right border
+                if (borderRightSize > 0)
+                {
+                    bX = border_x+elemWidth+paddingRight;
+                    bY = border_y-borderBottomSize-paddingBottom;
+                    bWidth = borderRightSize;
+                    bHeight = elemHeight+borderTopSize+borderBottomSize+paddingTop+paddingBottom;
+                    drawRectanglePDFBox(borderRightSize, getBorderColor(elem, "right"), bX, bY, bWidth, bHeight);
+                }
+                
+                // top border
+                if (borderTopSize > 0)
+                {
+                	bX = border_x-borderLeftSize-paddingLeft;
+                	bY = border_y+elemHeight+paddingTop;
+                	bWidth = elemWidth+borderLeftSize+borderRightSize+paddingLeft+paddingRight;
+                	bHeight = borderTopSize;
+                    drawRectanglePDFBox(borderTopSize, getBorderColor(elem, "top"), bX, bY, bWidth, bHeight);
+                }
+                
+                // bottom border
+                if (borderBottomSize > 0)
+                {
+                    bX = border_x-borderLeftSize-paddingLeft;
+                    bY = border_y-borderBottomSize-paddingBottom;
+                    bWidth = elemWidth+borderLeftSize+borderRightSize+paddingLeft+paddingRight;
+                    bHeight = borderBottomSize;
+                    drawRectanglePDFBox(borderBottomSize, getBorderColor(elem, "bottom"), bX, bY, bWidth, bHeight);
+                }
             
-            // bottom border
-            bX = border_x-borderLeftSize-paddingLeft;
-            bY = border_y-borderBottomSize-paddingBottom;
-            bWidth = elemWidth+borderLeftSize+borderRightSize+paddingLeft+paddingRight;
-            bHeight = borderBottomSize;
-            drawRectanglePDFBox(borderBottomSize, getBorderColor(elem, "bottom"), bX, bY, bWidth, bHeight);
-        
-        }
-        catch (Exception e) {
-            
-            e.printStackTrace();
-            return -1;
-        }
-        
+            }
+            catch (Exception e) {
+                
+                e.printStackTrace();
+                return -1;
+            }
+        }            
         return 0; 
     }
 
@@ -1269,7 +1283,6 @@ public class PDFRenderer implements BoxRenderer
             page = new PDPage(pageFormat);
             doc.addPage(page);
             content = new PDPageContentStream(doc, page);
-            mediabox = page.findMediaBox();
         } catch (Exception e) {
             e.printStackTrace();
             return -1;
@@ -1287,7 +1300,6 @@ public class PDFRenderer implements BoxRenderer
                 page = new PDPage(pageFormat);
                 doc.addPage(page);
                 content = new PDPageContentStream(doc, page);
-                mediabox = page.findMediaBox();
             } 
             
             catch (IOException e) { 
