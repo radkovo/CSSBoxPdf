@@ -26,6 +26,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.URI;
 import java.util.Vector;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -33,7 +34,6 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
@@ -61,6 +61,8 @@ public class PDFRenderer implements BoxRenderer
 {
     private float resCoef, rootHeight;
     
+    private FontDB fontDB;
+    
     // PDFBox variables
     private PDDocument doc = null;
     private PDPage page = null;
@@ -80,7 +82,6 @@ public class PDFRenderer implements BoxRenderer
     private Vector <float[]> avoidTable = new Vector <float[]> (2);
 
     // font variables
-    private String pathToTTFFonts = "/";
     private Vector <fontTableRecord> fontTable = new Vector <fontTableRecord> (2);
     
     private class fontTableRecord {
@@ -153,6 +154,8 @@ public class PDFRenderer implements BoxRenderer
         // sets the top and bottom paddings for the output page
        	outputTopPadding = this.pageFormat.getHeight()/100;
         outputBottomPadding = this.pageFormat.getHeight()/100;
+        
+        fontDB = new FontDB();
     }
 
     @Override
@@ -1229,7 +1232,8 @@ public class PDFRenderer implements BoxRenderer
         
         // replaces several characters with UNICODE encoding with UTF-8 equivalent
         // 		- not needed in Apache PDFBox 2.0.0
-        String textToInsert = replaceNotSupportedUnicodeChars(text.getText());
+        //String textToInsert = replaceNotSupportedUnicodeChars(text.getText());
+        String textToInsert = text.getText();
         
         try {    	
             content.setNonStrokingColor(color);
@@ -1297,16 +1301,8 @@ public class PDFRenderer implements BoxRenderer
     private int insertNPagesPDFBox(int pageCount) {
         
         for (int i=1; i<pageCount; i++) {
-            try {                 
-                page = new PDPage(pageFormat);
-                doc.addPage(page);
-                content = new PDPageContentStream(doc, page);
-            } 
-            
-            catch (IOException e) { 
-                e.printStackTrace();
-                return -1;
-            }
+            page = new PDPage(pageFormat);
+            doc.addPage(page);
         }
         return 0;
     }
@@ -1320,7 +1316,7 @@ public class PDFRenderer implements BoxRenderer
         
         try {
             content.close();
-            content = new PDPageContentStream(doc,page, true, true);
+            content = new PDPageContentStream(doc, page, true, true);
         } catch (IOException e) {
             e.printStackTrace();
             return -1;
@@ -1394,7 +1390,11 @@ public class PDFRenderer implements BoxRenderer
             content.beginText();
             content.setFont(font, fontSize);
             content.newLineAtOffset(x, y);
-            content.showText(textToInsert);
+            try {
+                content.showText(textToInsert);
+            } catch (IllegalArgumentException e) {
+                System.err.println("Error: " + e.getMessage());
+            }
             content.endText();
 
             // underlines text if text is set underlined
@@ -1425,44 +1425,53 @@ public class PDFRenderer implements BoxRenderer
      */
     private PDFont setFont (String fontFamily, boolean isItalic, boolean isBold) {
         
-        PDFont font;
+        PDFont font = null;
         // tries to load font from given folder
         try {
-            if (isBold && isItalic) { font = PDType0Font.load(doc, new File(pathToTTFFonts + fontFamily + " Bold Italic.ttf")); }
-            else if (isBold) { font = PDType0Font.load(doc, new File(pathToTTFFonts + fontFamily + " Bold.ttf")); }
-            else if (isItalic) { font = PDType0Font.load(doc, new File(pathToTTFFonts + fontFamily + " Italic.ttf")); }
-            else { font = PDType0Font.load(doc, new File(pathToTTFFonts + fontFamily + ".ttf")); }
+            URI uri = fontDB.findFontURI(fontFamily, isBold, isItalic);
+            if (uri != null)
+            {
+                System.out.println("Trying to load " + fontFamily + " from " + uri);
+                font = PDType0Font.load(doc, new File(uri));
+            }
+            else
+                System.out.println("No font found for " + fontFamily);
         }
         // if not successful load the font from Apache PDFBox
         catch (IOException e) {
-        
-        	fontFamily = fontFamily.toLowerCase();
-	        switch (fontFamily) {
-	        case "courier":
-	        case "courier new":
-	        case "lucida console":
-	            if (isBold && isItalic) { font = PDType1Font.COURIER_BOLD_OBLIQUE;}
-	            else if (isBold) { font = PDType1Font.COURIER_BOLD;}
-	            else if (isItalic) { font = PDType1Font.COURIER_OBLIQUE;}
-	            else { font = PDType1Font.COURIER;}
-	            break;
-	        case "times":
-	        case "garamond":
-	        case "georgia":
-	        case "times new roman":
-	        case "serif":
-	            if (isBold && isItalic) { font = PDType1Font.TIMES_BOLD_ITALIC;}
-	            else if (isBold) { font = PDType1Font.TIMES_BOLD;}
-	            else if (isItalic) { font = PDType1Font.TIMES_ITALIC;}
-	            else { font = PDType1Font.TIMES_ROMAN;}
-	            break;
-	        default:
-	            if (isBold && isItalic) { font = PDType1Font.HELVETICA_BOLD_OBLIQUE;}
-	            else if (isBold) { font = PDType1Font.HELVETICA_BOLD;}
-	            else if (isItalic) { font = PDType1Font.HELVETICA_OBLIQUE;}
-	            else { font = PDType1Font.HELVETICA;}
-	            break;
-	        }
+            font = null;
+        }
+        //try some fallback
+        if (font == null)
+        {
+            System.out.println("FAILED");
+            fontFamily = fontFamily.toLowerCase();
+            switch (fontFamily) {
+            case "courier":
+            case "courier new":
+            case "lucida console":
+                if (isBold && isItalic) { font = PDType1Font.COURIER_BOLD_OBLIQUE;}
+                else if (isBold) { font = PDType1Font.COURIER_BOLD;}
+                else if (isItalic) { font = PDType1Font.COURIER_OBLIQUE;}
+                else { font = PDType1Font.COURIER;}
+                break;
+            case "times":
+            case "garamond":
+            case "georgia":
+            case "times new roman":
+            case "serif":
+                if (isBold && isItalic) { font = PDType1Font.TIMES_BOLD_ITALIC;}
+                else if (isBold) { font = PDType1Font.TIMES_BOLD;}
+                else if (isItalic) { font = PDType1Font.TIMES_ITALIC;}
+                else { font = PDType1Font.TIMES_ROMAN;}
+                break;
+            default:
+                if (isBold && isItalic) { font = PDType1Font.HELVETICA_BOLD_OBLIQUE;}
+                else if (isBold) { font = PDType1Font.HELVETICA_BOLD;}
+                else if (isItalic) { font = PDType1Font.HELVETICA_OBLIQUE;}
+                else { font = PDType1Font.HELVETICA;}
+                break;
+            }
         }
         return font;
     }
@@ -1539,10 +1548,4 @@ public class PDFRenderer implements BoxRenderer
         return text;
     }
     
-    /**
-     * Sets the pathToTTFFonts variable
-     */
-    public void setFontPath(String path) {
-    	this.pathToTTFFonts = path;
-    }
 }
