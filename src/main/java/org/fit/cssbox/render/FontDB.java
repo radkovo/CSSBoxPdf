@@ -35,7 +35,7 @@ public class FontDB
                 int ofs = path.lastIndexOf('/');
                 String name = path.substring(ofs + 1, path.length() - 4);
                 fontTable.put(normalizeName(name), uri);
-                System.out.println(name + " -> " + normalizeName(name));
+                //System.out.println(name + " -> " + normalizeName(name));
             }
         }
         
