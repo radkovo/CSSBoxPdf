@@ -23,20 +23,21 @@ package org.fit.cssbox.render;
 import java.awt.Color;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.URI;
 import java.util.Vector;
 
-import org.apache.pdfbox.encoding.PdfDocEncoding;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.edit.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.graphics.xobject.PDPixelMap;
-import org.apache.pdfbox.pdmodel.graphics.xobject.PDXObjectImage;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.fit.cssbox.layout.BackgroundImage;
 import org.fit.cssbox.layout.Box;
 import org.fit.cssbox.layout.ElementBox;
@@ -60,6 +61,8 @@ public class PDFRenderer implements BoxRenderer
 {
     private float resCoef, rootHeight;
     
+    private FontDB fontDB;
+    
     // PDFBox variables
     private PDDocument doc = null;
     private PDPage page = null;
@@ -79,8 +82,10 @@ public class PDFRenderer implements BoxRenderer
     private Vector <float[]> avoidTable = new Vector <float[]> (2);
 
     // font variables
-    private String pathToTTFFonts = "/";
     private Vector <fontTableRecord> fontTable = new Vector <fontTableRecord> (2);
+    
+    // try to replace unicode characters
+    private boolean replaceUnicode = false;
     
     private class fontTableRecord {
     	
@@ -115,31 +120,31 @@ public class PDFRenderer implements BoxRenderer
         
         switch (pageFormat) {
             case "A0":
-                this.pageFormat = PDPage.PAGE_SIZE_A0;
+                this.pageFormat = PDRectangle.A0;
                 break;
             case "A1":
-                this.pageFormat = PDPage.PAGE_SIZE_A1;
+                this.pageFormat = PDRectangle.A1;
                 break;
             case "A2":
-                this.pageFormat = PDPage.PAGE_SIZE_A2;
+                this.pageFormat = PDRectangle.A2;
                 break;
             case "A3":
-                this.pageFormat = PDPage.PAGE_SIZE_A3;
+                this.pageFormat = PDRectangle.A3;
                 break;
             case "A4":
-                this.pageFormat = PDPage.PAGE_SIZE_A4;
+                this.pageFormat = PDRectangle.A4;
                 break;
             case "A5":
-                this.pageFormat = PDPage.PAGE_SIZE_A5;
+                this.pageFormat = PDRectangle.A5;
                 break;              
             case "A6":
-                this.pageFormat = PDPage.PAGE_SIZE_A6;
+                this.pageFormat = PDRectangle.A6;
                 break;
             case "LETTER":
-                this.pageFormat = PDPage.PAGE_SIZE_LETTER;
+                this.pageFormat = PDRectangle.LETTER;
                 break;
             default:
-                this.pageFormat = PDPage.PAGE_SIZE_A4;
+                this.pageFormat = PDRectangle.A4;
                 break;
         }
         
@@ -152,6 +157,8 @@ public class PDFRenderer implements BoxRenderer
         // sets the top and bottom paddings for the output page
        	outputTopPadding = this.pageFormat.getHeight()/100;
         outputBottomPadding = this.pageFormat.getHeight()/100;
+        
+        fontDB = new FontDB();
     }
 
     @Override
@@ -1224,11 +1231,9 @@ public class PDFRenderer implements BoxRenderer
         	fontTable.add(new fontTableRecord(fontFamily, isBold, isItalic, font));
         }
         
-        font.setFontEncoding(new PdfDocEncoding());
+        //font.setFontEncoding(new PdfDocEncoding()); //TODO is this useful?
         
-        // replaces several characters with UNICODE encoding with UTF-8 equivalent
-        // 		- not needed in Apache PDFBox 2.0.0
-        String textToInsert = replaceNotSupportedUnicodeChars(text.getText());
+        String textToInsert = filterUnicode(text.getText());
         
         try {    	
             content.setNonStrokingColor(color);
@@ -1296,16 +1301,8 @@ public class PDFRenderer implements BoxRenderer
     private int insertNPagesPDFBox(int pageCount) {
         
         for (int i=1; i<pageCount; i++) {
-            try {                 
-                page = new PDPage(pageFormat);
-                doc.addPage(page);
-                content = new PDPageContentStream(doc, page);
-            } 
-            
-            catch (IOException e) { 
-                e.printStackTrace();
-                return -1;
-            }
+            page = new PDPage(pageFormat);
+            doc.addPage(page);
         }
         return 0;
     }
@@ -1315,11 +1312,11 @@ public class PDFRenderer implements BoxRenderer
      */
     private int changeRecentPageToPDFBox(int i) {
         
-        page = (PDPage)doc.getDocumentCatalog().getAllPages().get(i);
+        page = (PDPage)doc.getDocumentCatalog().getPages().get(i);
         
         try {
             content.close();
-            content = new PDPageContentStream(doc,page, true, true);
+            content = new PDPageContentStream(doc, page, true, true);
         } catch (IOException e) {
             e.printStackTrace();
             return -1;
@@ -1334,7 +1331,8 @@ public class PDFRenderer implements BoxRenderer
         
         try {
             content.setNonStrokingColor(bgColor);
-            content.fillRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
+            content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
+            content.fill();
         } catch (IOException e) {
             e.printStackTrace();
             return -1;
@@ -1351,7 +1349,8 @@ public class PDFRenderer implements BoxRenderer
         try {
             content.setLineWidth(lineWidth);
             content.setNonStrokingColor(bgColor);
-            content.fillRect(x, y, width, height);
+            content.addRect(x, y, width, height);
+            content.fill();
         } catch (IOException e) {
 
             e.printStackTrace();
@@ -1368,9 +1367,10 @@ public class PDFRenderer implements BoxRenderer
         y = pageFormat.getHeight() - height - y;
 
         try {
-            PDXObjectImage ximage = new PDPixelMap(doc, img);
-            // insert in PDF
-            content.drawXObject(ximage, x, y, width, height);
+            //PDXObjectImage ximage = new PDPixelMap(doc, img);
+            //content.drawXObject(ximage, x, y, width, height);
+            PDImageXObject ximage = LosslessFactory.createFromImage(doc, img);
+            content.drawImage(ximage, x, y, width, height);
         } catch (IOException e) {
         	e.printStackTrace();
             return -1;	
@@ -1389,8 +1389,12 @@ public class PDFRenderer implements BoxRenderer
         try {
             content.beginText();
             content.setFont(font, fontSize);
-            content.moveTextPositionByAmount(x, y);
-            content.drawString(textToInsert);
+            content.newLineAtOffset(x, y);
+            try {
+                content.showText(textToInsert);
+            } catch (IllegalArgumentException e) {
+                System.err.println("Error: " + e.getMessage());
+            }
             content.endText();
 
             // underlines text if text is set underlined
@@ -1405,7 +1409,8 @@ public class PDFRenderer implements BoxRenderer
                     yOffset = fontSize/5.7f;
                 }
                 
-                content.fillRect(x, y-yOffset, strokeWidth, resCoef*lineHeightCalibration);
+                content.addRect(x, y-yOffset, strokeWidth, resCoef*lineHeightCalibration);
+                content.fill();
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -1418,50 +1423,103 @@ public class PDFRenderer implements BoxRenderer
      * Creates object describing font
      * @return the font object
      */
-    private PDFont setFont (String fontFamily, boolean isItalic, boolean isBold) {
+    private PDFont setFont(String fontFamily, boolean isItalic, boolean isBold) {
         
-        PDFont font;
-        // tries to load font from given folder
-        try {
-            if (isBold && isItalic) { font = PDTrueTypeFont.loadTTF(doc, pathToTTFFonts + fontFamily + " Bold Italic.ttf"); }
-            else if (isBold) { font = PDTrueTypeFont.loadTTF(doc, pathToTTFFonts + fontFamily + " Bold.ttf"); }
-            else if (isItalic) { font = PDTrueTypeFont.loadTTF(doc, pathToTTFFonts + fontFamily + " Italic.ttf"); }
-            else { font = PDTrueTypeFont.loadTTF(doc, pathToTTFFonts + fontFamily + ".ttf"); }
-        }
-        // if not successful load the font from Apache PDFBox
-        catch (IOException e) {
-        
-        	fontFamily = fontFamily.toLowerCase();
-	        switch (fontFamily) {
-	        case "courier":
-	        case "courier new":
-	        case "lucida console":
-	            if (isBold && isItalic) { font = PDType1Font.COURIER_BOLD_OBLIQUE;}
-	            else if (isBold) { font = PDType1Font.COURIER_BOLD;}
-	            else if (isItalic) { font = PDType1Font.COURIER_OBLIQUE;}
-	            else { font = PDType1Font.COURIER;}
-	            break;
-	        case "times":
-	        case "garamond":
-	        case "georgia":
-	        case "times new roman":
-	        case "serif":
-	            if (isBold && isItalic) { font = PDType1Font.TIMES_BOLD_ITALIC;}
-	            else if (isBold) { font = PDType1Font.TIMES_BOLD;}
-	            else if (isItalic) { font = PDType1Font.TIMES_ITALIC;}
-	            else { font = PDType1Font.TIMES_ROMAN;}
-	            break;
-	        default:
-	            if (isBold && isItalic) { font = PDType1Font.HELVETICA_BOLD_OBLIQUE;}
-	            else if (isBold) { font = PDType1Font.HELVETICA_BOLD;}
-	            else if (isItalic) { font = PDType1Font.HELVETICA_OBLIQUE;}
-	            else { font = PDType1Font.HELVETICA;}
-	            break;
-	        }
-        }
+        PDFont font = loadTTF(fontFamily, isItalic, isBold);
+        //try some fallbacks when not found
+        if (font == null)
+            font = tryTTFFallback(fontFamily, isItalic, isBold);
+        if (font == null)
+            font = tryBuiltinFallback(fontFamily, isItalic, isBold);
         return font;
     }
 
+    private PDFont tryBuiltinFallback(String fontFamily, boolean isItalic, boolean isBold)
+    {
+        PDFont font;
+        
+        fontFamily = fontFamily.toLowerCase();
+        switch (fontFamily) {
+        case "courier":
+        case "courier new":
+        case "lucida console":
+            if (isBold && isItalic) { font = PDType1Font.COURIER_BOLD_OBLIQUE;}
+            else if (isBold) { font = PDType1Font.COURIER_BOLD;}
+            else if (isItalic) { font = PDType1Font.COURIER_OBLIQUE;}
+            else { font = PDType1Font.COURIER;}
+            break;
+        case "times":
+        case "garamond":
+        case "georgia":
+        case "times new roman":
+        case "serif":
+            if (isBold && isItalic) { font = PDType1Font.TIMES_BOLD_ITALIC;}
+            else if (isBold) { font = PDType1Font.TIMES_BOLD;}
+            else if (isItalic) { font = PDType1Font.TIMES_ITALIC;}
+            else { font = PDType1Font.TIMES_ROMAN;}
+            break;
+        default:
+            if (isBold && isItalic) { font = PDType1Font.HELVETICA_BOLD_OBLIQUE;}
+            else if (isBold) { font = PDType1Font.HELVETICA_BOLD;}
+            else if (isItalic) { font = PDType1Font.HELVETICA_OBLIQUE;}
+            else { font = PDType1Font.HELVETICA;}
+            break;
+        }
+        return font;
+    }
+    
+    private PDFont tryTTFFallback(String fontFamily, boolean isItalic, boolean isBold)
+    {
+        fontFamily = fontFamily.toLowerCase();
+        switch (fontFamily) {
+        case "courier":
+        case "courier new":
+        case "lucida console":
+        case "monotype":
+            return loadTTFAlternatives(new String[]{"freemono", "DejaVuSansMono"}, isItalic, isBold);
+        case "times":
+        case "garamond":
+        case "georgia":
+        case "times new roman":
+        case "serif":
+            return loadTTFAlternatives(new String[]{"freeserif"}, isItalic, isBold);
+        default:
+            return loadTTFAlternatives(new String[]{"freesans"}, isItalic, isBold);
+        }
+    }
+    
+    /**
+     * Tries to load a font from the system database.
+     * @param fontFamily
+     * @param isItalic
+     * @param isBold
+     * @return the font or {@code null} when not found
+     */
+    private PDFont loadTTF(String fontFamily, boolean isItalic, boolean isBold)
+    {
+        PDFont font = null;
+        try {
+            URI uri = fontDB.findFontURI(fontFamily, isBold, isItalic);
+            if (uri != null)
+                font = PDType0Font.load(doc, new File(uri));
+        }
+        catch (IOException e) {
+            font = null;
+        }
+        return font;
+    }
+    
+    private PDFont loadTTFAlternatives(String[] fontFamilies, boolean isItalic, boolean isBold)
+    {
+        for (String fontFamily : fontFamilies)
+        {
+            PDFont font = loadTTF(fontFamily, isItalic, isBold);
+            if (font != null)
+                return font;
+        }
+        return null;
+    }
+    
     /////////////////////////////////////////////////////////////////////
     // OTHER FUNCTIONS
     /////////////////////////////////////////////////////////////////////
@@ -1490,54 +1548,50 @@ public class PDFRenderer implements BoxRenderer
         return clr;
     }
     
-    /**
-     * Replaces several characters with UNICODE code higher then 0xFF
-     *      with similar or equivalent alternative with UNICODE code 0xFF or lower
-     * @return fixed String
-     */
-    private String replaceNotSupportedUnicodeChars(String text) {
+    private String filterUnicode(String text) {
         
-        // removes diacritics
-        text = text.replace("\u010f","d"); text = text.replace("\u010e","D");
-        text = text.replace("\u011b","e"); text = text.replace("\u011a","E");
-        text = text.replace("\u0161","s"); text = text.replace("\u0160","S");
-        text = text.replace("\u010d","c"); text = text.replace("\u010c","C");         
-        text = text.replace("\u0159","r"); text = text.replace("\u0158","R"); 
-        text = text.replace("\u017e","z"); text = text.replace("\u017d","Z"); 
-        text = text.replace("\u016F","u"); text = text.replace("\u016E","U");
-        text = text.replace("\u0148","n"); text = text.replace("\u0147","N");
-        text = text.replace("\u0165","t"); text = text.replace("\u0164","T");        
-        text = text.replace("\u2013","\u002D");
-        // replaces apostrophe with equivalent
-        text = text.replace("\u2018", "\'"); text = text.replace("\u2019", "\'");
-        text = text.replace("\u201a", "\'"); text = text.replace("\u201b", "\'");
-        // replaces quote-marks with equivalent
-        text = text.replace("\u201c", "\""); text = text.replace("\u201d", "\"");
-        text = text.replace("\u201e", "\""); text = text.replace("\u201f", "\"");
-        // replaces three-dots-mark with three dots
-        text = text.replace("\u2026", "...");
-        // replaces vertical line with equivalent
-        text = text.replace("\u2502", "\u007C");
-        // replaces em dash with dash
-        text = text.replace("\u2014", "-");
-        // less then, more than
-        text = text.replace("\u2039", "<"); text = text.replace("\u203A", ">");
-        // replaces bullet point with alternative
-        text = text.replace("\u2022", "\u00B7");
-        // removes slovak diacritics
-        text = text.replace("\u013E", "l"); text = text.replace("\u013D", "L");
-        text = text.replace("\u013A", "l"); text = text.replace("\u0139", "L");        
-        text = text.replace("\u0151", "o"); text = text.replace("\u0150", "O");
-        text = text.replace("\u0155", "r"); text = text.replace("\u0154", "R");        
-        text = text.replace("\u0171", "u"); text = text.replace("\u0170", "U");
+        //replace nbsp with spaces
+        text = text.replace('\u00A0', ' ');
+        text = text.replace('\u00AD', '-');
+        
+        if (replaceUnicode)
+        {
+            // removes diacritics
+            text = text.replace("\u010f","d"); text = text.replace("\u010e","D");
+            text = text.replace("\u011b","e"); text = text.replace("\u011a","E");
+            text = text.replace("\u0161","s"); text = text.replace("\u0160","S");
+            text = text.replace("\u010d","c"); text = text.replace("\u010c","C");         
+            text = text.replace("\u0159","r"); text = text.replace("\u0158","R"); 
+            text = text.replace("\u017e","z"); text = text.replace("\u017d","Z"); 
+            text = text.replace("\u016F","u"); text = text.replace("\u016E","U");
+            text = text.replace("\u0148","n"); text = text.replace("\u0147","N");
+            text = text.replace("\u0165","t"); text = text.replace("\u0164","T");        
+            text = text.replace("\u2013","\u002D");
+            // replaces apostrophe with equivalent
+            text = text.replace("\u2018", "\'"); text = text.replace("\u2019", "\'");
+            text = text.replace("\u201a", "\'"); text = text.replace("\u201b", "\'");
+            // replaces quote-marks with equivalent
+            text = text.replace("\u201c", "\""); text = text.replace("\u201d", "\"");
+            text = text.replace("\u201e", "\""); text = text.replace("\u201f", "\"");
+            // replaces three-dots-mark with three dots
+            text = text.replace("\u2026", "...");
+            // replaces vertical line with equivalent
+            text = text.replace("\u2502", "\u007C");
+            // replaces em dash with dash
+            text = text.replace("\u2014", "-");
+            // less then, more than
+            text = text.replace("\u2039", "<"); text = text.replace("\u203A", ">");
+            // replaces bullet point with alternative
+            text = text.replace("\u2022", "\u00B7");
+            // removes slovak diacritics
+            text = text.replace("\u013E", "l"); text = text.replace("\u013D", "L");
+            text = text.replace("\u013A", "l"); text = text.replace("\u0139", "L");        
+            text = text.replace("\u0151", "o"); text = text.replace("\u0150", "O");
+            text = text.replace("\u0155", "r"); text = text.replace("\u0154", "R");        
+            text = text.replace("\u0171", "u"); text = text.replace("\u0170", "U");
+        }
         
         return text;
     }
     
-    /**
-     * Sets the pathToTTFFonts variable
-     */
-    public void setFontPath(String path) {
-    	this.pathToTTFFonts = path;
-    }
 }

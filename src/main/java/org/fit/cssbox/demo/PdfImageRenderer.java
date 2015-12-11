@@ -194,7 +194,6 @@ public class PdfImageRenderer
         int h = vp.getClippedContentBounds().height;
         
         PDFRenderer render = new PDFRenderer(w, h, out, pageFormat);
-        render.setFontPath("/Library/Fonts/Microsoft/");
         vp.draw(render);
         render.close();
     }    
