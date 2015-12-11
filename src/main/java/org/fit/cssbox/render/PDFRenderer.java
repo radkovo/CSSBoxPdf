@@ -84,6 +84,9 @@ public class PDFRenderer implements BoxRenderer
     // font variables
     private Vector <fontTableRecord> fontTable = new Vector <fontTableRecord> (2);
     
+    // try to replace unicode characters
+    private boolean replaceUnicode = false;
+    
     private class fontTableRecord {
     	
         public String fontName;
@@ -1230,10 +1233,7 @@ public class PDFRenderer implements BoxRenderer
         
         //font.setFontEncoding(new PdfDocEncoding()); //TODO is this useful?
         
-        // replaces several characters with UNICODE encoding with UTF-8 equivalent
-        // 		- not needed in Apache PDFBox 2.0.0
-        //String textToInsert = replaceNotSupportedUnicodeChars(text.getText());
-        String textToInsert = text.getText();
+        String textToInsert = filterUnicode(text.getText());
         
         try {    	
             content.setNonStrokingColor(color);
@@ -1423,59 +1423,103 @@ public class PDFRenderer implements BoxRenderer
      * Creates object describing font
      * @return the font object
      */
-    private PDFont setFont (String fontFamily, boolean isItalic, boolean isBold) {
+    private PDFont setFont(String fontFamily, boolean isItalic, boolean isBold) {
         
-        PDFont font = null;
-        // tries to load font from given folder
-        try {
-            URI uri = fontDB.findFontURI(fontFamily, isBold, isItalic);
-            if (uri != null)
-            {
-                System.out.println("Trying to load " + fontFamily + " from " + uri);
-                font = PDType0Font.load(doc, new File(uri));
-            }
-            else
-                System.out.println("No font found for " + fontFamily);
-        }
-        // if not successful load the font from Apache PDFBox
-        catch (IOException e) {
-            font = null;
-        }
-        //try some fallback
+        PDFont font = loadTTF(fontFamily, isItalic, isBold);
+        //try some fallbacks when not found
         if (font == null)
-        {
-            System.out.println("FAILED");
-            fontFamily = fontFamily.toLowerCase();
-            switch (fontFamily) {
-            case "courier":
-            case "courier new":
-            case "lucida console":
-                if (isBold && isItalic) { font = PDType1Font.COURIER_BOLD_OBLIQUE;}
-                else if (isBold) { font = PDType1Font.COURIER_BOLD;}
-                else if (isItalic) { font = PDType1Font.COURIER_OBLIQUE;}
-                else { font = PDType1Font.COURIER;}
-                break;
-            case "times":
-            case "garamond":
-            case "georgia":
-            case "times new roman":
-            case "serif":
-                if (isBold && isItalic) { font = PDType1Font.TIMES_BOLD_ITALIC;}
-                else if (isBold) { font = PDType1Font.TIMES_BOLD;}
-                else if (isItalic) { font = PDType1Font.TIMES_ITALIC;}
-                else { font = PDType1Font.TIMES_ROMAN;}
-                break;
-            default:
-                if (isBold && isItalic) { font = PDType1Font.HELVETICA_BOLD_OBLIQUE;}
-                else if (isBold) { font = PDType1Font.HELVETICA_BOLD;}
-                else if (isItalic) { font = PDType1Font.HELVETICA_OBLIQUE;}
-                else { font = PDType1Font.HELVETICA;}
-                break;
-            }
-        }
+            font = tryTTFFallback(fontFamily, isItalic, isBold);
+        if (font == null)
+            font = tryBuiltinFallback(fontFamily, isItalic, isBold);
         return font;
     }
 
+    private PDFont tryBuiltinFallback(String fontFamily, boolean isItalic, boolean isBold)
+    {
+        PDFont font;
+        
+        fontFamily = fontFamily.toLowerCase();
+        switch (fontFamily) {
+        case "courier":
+        case "courier new":
+        case "lucida console":
+            if (isBold && isItalic) { font = PDType1Font.COURIER_BOLD_OBLIQUE;}
+            else if (isBold) { font = PDType1Font.COURIER_BOLD;}
+            else if (isItalic) { font = PDType1Font.COURIER_OBLIQUE;}
+            else { font = PDType1Font.COURIER;}
+            break;
+        case "times":
+        case "garamond":
+        case "georgia":
+        case "times new roman":
+        case "serif":
+            if (isBold && isItalic) { font = PDType1Font.TIMES_BOLD_ITALIC;}
+            else if (isBold) { font = PDType1Font.TIMES_BOLD;}
+            else if (isItalic) { font = PDType1Font.TIMES_ITALIC;}
+            else { font = PDType1Font.TIMES_ROMAN;}
+            break;
+        default:
+            if (isBold && isItalic) { font = PDType1Font.HELVETICA_BOLD_OBLIQUE;}
+            else if (isBold) { font = PDType1Font.HELVETICA_BOLD;}
+            else if (isItalic) { font = PDType1Font.HELVETICA_OBLIQUE;}
+            else { font = PDType1Font.HELVETICA;}
+            break;
+        }
+        return font;
+    }
+    
+    private PDFont tryTTFFallback(String fontFamily, boolean isItalic, boolean isBold)
+    {
+        fontFamily = fontFamily.toLowerCase();
+        switch (fontFamily) {
+        case "courier":
+        case "courier new":
+        case "lucida console":
+        case "monotype":
+            return loadTTFAlternatives(new String[]{"freemono", "DejaVuSansMono"}, isItalic, isBold);
+        case "times":
+        case "garamond":
+        case "georgia":
+        case "times new roman":
+        case "serif":
+            return loadTTFAlternatives(new String[]{"freeserif"}, isItalic, isBold);
+        default:
+            return loadTTFAlternatives(new String[]{"freesans"}, isItalic, isBold);
+        }
+    }
+    
+    /**
+     * Tries to load a font from the system database.
+     * @param fontFamily
+     * @param isItalic
+     * @param isBold
+     * @return the font or {@code null} when not found
+     */
+    private PDFont loadTTF(String fontFamily, boolean isItalic, boolean isBold)
+    {
+        PDFont font = null;
+        try {
+            URI uri = fontDB.findFontURI(fontFamily, isBold, isItalic);
+            if (uri != null)
+                font = PDType0Font.load(doc, new File(uri));
+        }
+        catch (IOException e) {
+            font = null;
+        }
+        return font;
+    }
+    
+    private PDFont loadTTFAlternatives(String[] fontFamilies, boolean isItalic, boolean isBold)
+    {
+        for (String fontFamily : fontFamilies)
+        {
+            PDFont font = loadTTF(fontFamily, isItalic, isBold);
+            if (font != null)
+                return font;
+        }
+        return null;
+    }
+    
     /////////////////////////////////////////////////////////////////////
     // OTHER FUNCTIONS
     /////////////////////////////////////////////////////////////////////
@@ -1504,46 +1548,48 @@ public class PDFRenderer implements BoxRenderer
         return clr;
     }
     
-    /**
-     * Replaces several characters with UNICODE code higher then 0xFF
-     *      with similar or equivalent alternative with UNICODE code 0xFF or lower
-     * @return fixed String
-     */
-    private String replaceNotSupportedUnicodeChars(String text) {
+    private String filterUnicode(String text) {
         
-        // removes diacritics
-        text = text.replace("\u010f","d"); text = text.replace("\u010e","D");
-        text = text.replace("\u011b","e"); text = text.replace("\u011a","E");
-        text = text.replace("\u0161","s"); text = text.replace("\u0160","S");
-        text = text.replace("\u010d","c"); text = text.replace("\u010c","C");         
-        text = text.replace("\u0159","r"); text = text.replace("\u0158","R"); 
-        text = text.replace("\u017e","z"); text = text.replace("\u017d","Z"); 
-        text = text.replace("\u016F","u"); text = text.replace("\u016E","U");
-        text = text.replace("\u0148","n"); text = text.replace("\u0147","N");
-        text = text.replace("\u0165","t"); text = text.replace("\u0164","T");        
-        text = text.replace("\u2013","\u002D");
-        // replaces apostrophe with equivalent
-        text = text.replace("\u2018", "\'"); text = text.replace("\u2019", "\'");
-        text = text.replace("\u201a", "\'"); text = text.replace("\u201b", "\'");
-        // replaces quote-marks with equivalent
-        text = text.replace("\u201c", "\""); text = text.replace("\u201d", "\"");
-        text = text.replace("\u201e", "\""); text = text.replace("\u201f", "\"");
-        // replaces three-dots-mark with three dots
-        text = text.replace("\u2026", "...");
-        // replaces vertical line with equivalent
-        text = text.replace("\u2502", "\u007C");
-        // replaces em dash with dash
-        text = text.replace("\u2014", "-");
-        // less then, more than
-        text = text.replace("\u2039", "<"); text = text.replace("\u203A", ">");
-        // replaces bullet point with alternative
-        text = text.replace("\u2022", "\u00B7");
-        // removes slovak diacritics
-        text = text.replace("\u013E", "l"); text = text.replace("\u013D", "L");
-        text = text.replace("\u013A", "l"); text = text.replace("\u0139", "L");        
-        text = text.replace("\u0151", "o"); text = text.replace("\u0150", "O");
-        text = text.replace("\u0155", "r"); text = text.replace("\u0154", "R");        
-        text = text.replace("\u0171", "u"); text = text.replace("\u0170", "U");
+        //replace nbsp with spaces
+        text = text.replace('\u00A0', ' ');
+        text = text.replace('\u00AD', '-');
+        
+        if (replaceUnicode)
+        {
+            // removes diacritics
+            text = text.replace("\u010f","d"); text = text.replace("\u010e","D");
+            text = text.replace("\u011b","e"); text = text.replace("\u011a","E");
+            text = text.replace("\u0161","s"); text = text.replace("\u0160","S");
+            text = text.replace("\u010d","c"); text = text.replace("\u010c","C");         
+            text = text.replace("\u0159","r"); text = text.replace("\u0158","R"); 
+            text = text.replace("\u017e","z"); text = text.replace("\u017d","Z"); 
+            text = text.replace("\u016F","u"); text = text.replace("\u016E","U");
+            text = text.replace("\u0148","n"); text = text.replace("\u0147","N");
+            text = text.replace("\u0165","t"); text = text.replace("\u0164","T");        
+            text = text.replace("\u2013","\u002D");
+            // replaces apostrophe with equivalent
+            text = text.replace("\u2018", "\'"); text = text.replace("\u2019", "\'");
+            text = text.replace("\u201a", "\'"); text = text.replace("\u201b", "\'");
+            // replaces quote-marks with equivalent
+            text = text.replace("\u201c", "\""); text = text.replace("\u201d", "\"");
+            text = text.replace("\u201e", "\""); text = text.replace("\u201f", "\"");
+            // replaces three-dots-mark with three dots
+            text = text.replace("\u2026", "...");
+            // replaces vertical line with equivalent
+            text = text.replace("\u2502", "\u007C");
+            // replaces em dash with dash
+            text = text.replace("\u2014", "-");
+            // less then, more than
+            text = text.replace("\u2039", "<"); text = text.replace("\u203A", ">");
+            // replaces bullet point with alternative
+            text = text.replace("\u2022", "\u00B7");
+            // removes slovak diacritics
+            text = text.replace("\u013E", "l"); text = text.replace("\u013D", "L");
+            text = text.replace("\u013A", "l"); text = text.replace("\u0139", "L");        
+            text = text.replace("\u0151", "o"); text = text.replace("\u0150", "O");
+            text = text.replace("\u0155", "r"); text = text.replace("\u0154", "R");        
+            text = text.replace("\u0171", "u"); text = text.replace("\u0170", "U");
+        }
         
         return text;
     }

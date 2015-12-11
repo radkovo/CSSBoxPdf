@@ -4,10 +4,7 @@
 package org.fit.cssbox.render;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 
 import org.apache.fontbox.util.autodetect.FontFileFinder;
@@ -37,7 +34,8 @@ public class FontDB
             {
                 int ofs = path.lastIndexOf('/');
                 String name = path.substring(ofs + 1, path.length() - 4);
-                fontTable.put(name.toLowerCase(), uri);
+                fontTable.put(normalizeName(name), uri);
+                System.out.println(name + " -> " + normalizeName(name));
             }
         }
         
@@ -45,51 +43,29 @@ public class FontDB
     
     public URI findFontURI(String family, boolean bold, boolean italic)
     {
-        String name = findFontName(family, bold, italic);
-        if (name != null)
-            return fontTable.get(name);
+        String[] search;
+        if (bold && italic)
+            search = new String[]{"bolditalic", "italicbold", "bi", "bd", "boldoblique", "obliquebold"};
+        else if (bold)
+            search = new String[]{"bold", "bd", "b"};
+        else if (italic)
+            search = new String[]{"italic", "i", "oblique"};
         else
-            return null;
-    }
-    
-    private String findFontName(String family, boolean bold, boolean italic)
-    {
-        List<String> list = findNamesByFamily(family);
-        for (Iterator<String> it = list.iterator(); it.hasNext();)
+            search = new String[]{"", "r"};
+        
+        String prefix = normalizeName(family);
+        for (String cand : search)
         {
-            String cand = it.next();
-            if ((bold && !cand.contains("bold")) || (!bold && cand.contains("bold")))
-                it.remove();
-        }
-        if (italic)
-        {
-            for (String cand : list)
-                if (cand.contains("italic"))
-                    return cand;
-            for (String cand : list)
-                if (cand.contains("oblique"))
-                    return cand;
-        }
-        else
-        {
-            for (String cand : list)
-                if (!cand.contains("italic") && !cand.contains("oblique"))
-                    return cand;
+            URI uri = fontTable.get(prefix + cand);
+            if (uri != null)
+                return uri;
         }
         return null;
     }
     
-    private List<String> findNamesByFamily(String family)
+    private String normalizeName(String name)
     {
-        List<String> ret = new ArrayList<String>();
-        for (String name : fontTable.keySet())
-        {
-            if (name.startsWith(family.toLowerCase()))
-            {
-                ret.add(name);
-            }
-        }
-        return ret;
+        return name.trim().toLowerCase().replaceAll("[^a-z]", "");
     }
     
 }
