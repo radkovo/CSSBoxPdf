@@ -148,6 +148,17 @@ public class PDFRenderer implements BoxRenderer
                 break;
         }
         
+        initSettings(rootWidth);
+    }
+    public PDFRenderer(int rootWidth, int rootHeight, OutputStream out, PDRectangle pageFormat) {
+        this.rootHeight = rootHeight;
+        this.pathToSave = out;
+        this.pageCount = 0;
+        this.pageFormat = pageFormat;
+        initSettings(rootWidth);
+    }
+
+    private void initSettings(int rootWidth) {
         // calculate resize coefficient
         resCoef = this.pageFormat.getWidth()/rootWidth;
         
