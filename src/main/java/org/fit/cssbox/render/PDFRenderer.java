@@ -148,6 +148,17 @@ public class PDFRenderer implements BoxRenderer
                 break;
         }
         
+        initSettings(rootWidth);
+    }
+    public PDFRenderer(int rootWidth, int rootHeight, OutputStream out, PDRectangle pageFormat) {
+        this.rootHeight = rootHeight;
+        this.pathToSave = out;
+        this.pageCount = 0;
+        this.pageFormat = pageFormat;
+        initSettings(rootWidth);
+    }
+
+    private void initSettings(int rootWidth) {
         // calculate resize coefficient
         resCoef = this.pageFormat.getWidth()/rootWidth;
         
@@ -1393,6 +1404,8 @@ public class PDFRenderer implements BoxRenderer
             try {
                 content.showText(textToInsert);
             } catch (IllegalArgumentException e) {
+                // NOTE: seems to happen for embedded icon fonts like glyphicons and fa, add space so there is some text otherwise PDFBox throws IllegalStateException: subset is empty; these work with SVGRenderer
+                content.showText(" ");
                 System.err.println("Error: " + e.getMessage());
             }
             content.endText();
