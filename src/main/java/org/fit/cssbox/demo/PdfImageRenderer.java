@@ -97,6 +97,7 @@ public class PdfImageRenderer
     public boolean renderURL(String urlstring, OutputStream out, Type type, String pageFormat) throws IOException, SAXException
     {
         if (!urlstring.startsWith("http:") &&
+            !urlstring.startsWith("https:") &&
             !urlstring.startsWith("ftp:") &&
             !urlstring.startsWith("file:"))
                 urlstring = "http://" + urlstring;
@@ -242,7 +243,8 @@ public class PdfImageRenderer
             os.close();
             System.err.println("Done.");
         } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
+            //System.err.println("Error: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }

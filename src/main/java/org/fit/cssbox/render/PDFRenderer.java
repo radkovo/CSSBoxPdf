@@ -38,10 +38,12 @@ import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.layout.BackgroundImage;
 import org.fit.cssbox.layout.Box;
 import org.fit.cssbox.layout.ElementBox;
 import org.fit.cssbox.layout.LengthSet;
+import org.fit.cssbox.layout.ListItemBox;
 import org.fit.cssbox.layout.ReplacedBox;
 import org.fit.cssbox.layout.ReplacedContent;
 import org.fit.cssbox.layout.ReplacedImage;
@@ -177,6 +179,12 @@ public class PDFRenderer implements BoxRenderer
     
     @Override
     public void finishElementContents(ElementBox elem) {}
+
+    @Override
+    public void renderMarker(ListItemBox elem)
+    {
+        // TODO render the markers
+    }
 
     /**
      * Creates 2 new Nodes with reference to elem inside
@@ -1544,13 +1552,12 @@ public class PDFRenderer implements BoxRenderer
 
         Color clr = null;
         // gets the color value from CSS property
-        CSSProperty.BorderColor bclr = elem.getStyle().getProperty("border-"+side+"-color");
-        TermColor tclr = elem.getStyle().getValue(TermColor.class, "border-"+side+"-color");
+        TermColor tclr = elem.getStyle().getSpecifiedValue(TermColor.class, "border-"+side+"-color");
         CSSProperty.BorderStyle bst = elem.getStyle().getProperty("border-"+side+"-style");
 
-        if (bst != CSSProperty.BorderStyle.HIDDEN && bclr != CSSProperty.BorderColor.TRANSPARENT) {
-            if (tclr != null) clr = tclr.getValue();
-            
+        if (bst != CSSProperty.BorderStyle.HIDDEN && (tclr == null || !tclr.isTransparent())) {
+            if (tclr != null)
+                clr = CSSUnits.convertColor(tclr.getValue());
             if (clr == null) {
                 clr = elem.getVisualContext().getColor();
                 if (clr == null) clr = Color.BLACK;
