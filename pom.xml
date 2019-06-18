@@ -66,8 +66,8 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.7.0</version>
 				<configuration>
-					<source>1.7</source>
-					<target>1.7</target>
+					<source>1.8</source>
+					<target>1.8</target>
 				</configuration>
 			</plugin>
 
@@ -114,7 +114,7 @@
 		<dependency>
 			<groupId>net.sf.cssbox</groupId>
 			<artifactId>cssbox</artifactId>
-			<version>4.15-SNAPSHOT</version>
+			<version>4.16-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.pdfbox</groupId>
