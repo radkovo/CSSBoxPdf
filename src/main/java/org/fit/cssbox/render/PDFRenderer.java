@@ -16,18 +16,26 @@
  * along with PDFRenderer. If not, see <http://www.gnu.org/licenses/>.
  *
  * Created on 10.5.2015, 22:29:10 by Zbynek Cervinka
+ * Improved on 3.5.2019, 12:11:15 by Nguyen Hoang Duong
  */
 
 package org.fit.cssbox.render;
 
+import java.awt.AlphaComposite;
 import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
+import java.util.List;
 import java.util.Vector;
+
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -38,9 +46,12 @@ import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
+import org.apache.pdfbox.util.Matrix;
 import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.layout.BackgroundImage;
 import org.fit.cssbox.layout.Box;
+import org.fit.cssbox.layout.CSSDecoder;
 import org.fit.cssbox.layout.ElementBox;
 import org.fit.cssbox.layout.LengthSet;
 import org.fit.cssbox.layout.ListItemBox;
@@ -52,15 +63,23 @@ import org.fit.cssbox.layout.VisualContext;
 
 import cz.vutbr.web.css.CSSProperty;
 import cz.vutbr.web.css.NodeData;
+import cz.vutbr.web.css.Term;
 import cz.vutbr.web.css.TermColor;
+import cz.vutbr.web.css.TermFunction;
+
+import cz.vutbr.web.css.TermLengthOrPercent;
+import cz.vutbr.web.css.TermList;
+import cz.vutbr.web.css.TermFunction.Gradient.ColorStop;
+import cz.vutbr.web.css.TermIdent;
 
 /**
- * A renderer that produces an PDF output using PDFBox library
- * 
- * @author Zbynek Cervinka
+ * A renderer that produces an PDF output using PDFBox library.
+ * It can also render some of advanced CSS3 properties.
+ * @author Zbynek Cervinka, Nguyen Hoang Duong
  */
 public class PDFRenderer implements BoxRenderer
 {
+
     private float resCoef, rootHeight;
     
     private FontDB fontDB;
@@ -70,6 +89,9 @@ public class PDFRenderer implements BoxRenderer
     private PDPage page = null;
     private PDPageContentStream content = null;
     private PDRectangle pageFormat = null;
+    
+    // variables for rendering border radius
+    private float ax, ay, bx, by, cx, cy, dx, dy, ex, ey, fx, fy, gx, gy, hx, hy;
     
     // page help variables
     private int pageCount;
@@ -86,8 +108,6 @@ public class PDFRenderer implements BoxRenderer
     // font variables
     private Vector <fontTableRecord> fontTable = new Vector <fontTableRecord> (2);
     
-    // try to replace unicode characters
-    private boolean replaceUnicode = false;
     
     private class fontTableRecord {
     	
@@ -964,18 +984,21 @@ public class PDFRenderer implements BoxRenderer
     ////////////////////////////////////////////////////////////////////////
     
     /**
-     * Writing elements to pages in PDF
+     * Writing elements and their CSS property to pages in PDF 
      */
-    private void writeAllElementsToPDF() {
-        
+    private int writeAllElementsToPDF() {
     	// goes through all pages in PDF and inserts to all elements to current page
+    	Filter PDFfilter = new Filter(null, 0, 0, 1.0f, 1.0f);
+    	BorderRadius borRad = new BorderRadius();
+        boolean isBorderRad = false;
+    	boolean transf = false;
         for (int i=0; i<pageCount; i++) {        
             changeRecentPageToPDFBox(i);
             
             Vector<Node> elementsToWriteToPDF = new Vector<Node>(2);
             elementsToWriteToPDF.add(rootNodeOfList);
             while (elementsToWriteToPDF.size()>0) {
-                
+            	
                 // get first element from Vector
                 Node recentNode = elementsToWriteToPDF.firstElement();
                 elementsToWriteToPDF.remove(0);
@@ -983,26 +1006,180 @@ public class PDFRenderer implements BoxRenderer
                 // get all children of recentNode and add to elementsToWriteToPDF
                 Vector<Node> allChildren = recentNode.getAllChildren();
                 if (allChildren != null) elementsToWriteToPDF.addAll(allChildren);
-  
+                
                 // inserts elem data to PDF
                 if (recentNode.isElem())  {
                     ElementBox elem = recentNode.getElem();
+                    if(isTransform(recentNode, elem, i, transf) == 0) // if element has transform property
+                    {
+                    	
+                    	transf = false;
+                    	try {
+                    		content.restoreGraphicsState();
+                    		content.saveGraphicsState();
+                    	}
+                    	catch(IOException e) {
+                    	    e.printStackTrace();
+                    	    return -1;
+                    	}
+                    }
+                    else  	
+                    	transf = true;
+                   
+                    boolean radialGrad = false;
+                    boolean linearGrad = false;
+                    Matrix radMatrix = new Matrix();
+                    PDShadingType3 shading = null;
+                    
+                    if (elem.isBlock() || elem.isReplaced())
+                    {
+                    	CSSDecoder dec = new CSSDecoder(elem.getVisualContext());
+                        Rectangle bounds = elem.getAbsoluteBorderBounds();
+                    	CSSProperty.Filter filter = elem.getStyle().getProperty("filter");
+       		            if (filter == CSSProperty.Filter.list_values) {
+       		                TermList values = elem.getStyle().getValue(TermList.class, "filter");
+       		                int n = 0;
+       		                String[] filterType = new String[10];
+       		                float invert = 0;
+       		                float grayscale = 0;
+       		                float opacity = 1;
+       		                float brightness = 1;
+       		                for (Term<?> term : values) {
+       		                	if (term instanceof TermFunction.Invert) {
+       		                		filterType[n] = "invert";
+       		                		invert = ((TermFunction.Invert) term).getAmount();
+       		                	}
+       		                	else if (term instanceof TermFunction.Brightness) {
+       		                		filterType[n] = "bright";
+       		                		brightness = ((TermFunction.Brightness) term).getAmount();
+       		                	}
+       		                	else if (term instanceof TermFunction.Opacity) {
+       		                		filterType[n] = "opacity";
+       		                		opacity = ((TermFunction.Opacity) term).getAmount();
+       		                	}
+       		                	else if (term instanceof TermFunction.Grayscale) {
+       		                		filterType[n] = "grayscale";
+       		                		grayscale = 1;
+       		                	}     		                	
+       		                	else 
+       		                		filterType[n] = "";
+       		                		
+       		                	n++;
+       		                }
+       		                PDFfilter = new Filter(filterType, invert, grayscale, opacity, brightness);
+       		            }
+       		           
+       		            //CSSProperty.BorderRadius borderRad = elem.getStyle().getProperty("border-radius");
+       		            TermList value1 = elem.getStyle().getValue(TermList.class, "border-top-right-radius");
+       		            TermList value2 = elem.getStyle().getValue(TermList.class, "border-top-left-radius");
+       		            TermList value3 = elem.getStyle().getValue(TermList.class, "border-bottom-right-radius");
+       		            TermList value4 = elem.getStyle().getValue(TermList.class, "border-bottom-left-radius");
+       		            if ((value1 != null) || (value2 != null) || (value3 != null) || (value4 != null)) {
+    		            	isBorderRad = true;
+    		            	borRad.setCornerRadius(value2, value1, value4, value3, elem, resCoef);
+    		            	
+    		            }
+    		            else {
+    		            	isBorderRad = false;
+    		            	borRad = new BorderRadius(); // calculating corner radiuses
+    		            }
+    		            CSSProperty.BackgroundImage backgrd = elem.getStyle().getProperty("background-image");
+    		            
+    		            if (backgrd == CSSProperty.BackgroundImage.gradient) {  
+    		            	TermFunction.Gradient values = elem.getStyle().getValue(TermFunction.Gradient.class, "background-image");
+    		           
+    		            	if (values instanceof TermFunction.LinearGradient) {
+    		            		linearGrad = true;
+    		
+    		            		double radAgl;
+    		            		float degAgl;
+    		            		
+    		            		// get angle of gradient line
+    		            		if (((TermFunction.LinearGradient) values).getAngle() != null) {
+    		            			radAgl = dec.getAngle(((TermFunction.LinearGradient) values).getAngle());
+    		            			degAgl = (float)Math.toDegrees(radAgl);
+    		            		}
+    		            		else
+    		            			degAgl = 180; // implicitne je 180deg
+    		            		LinearGradient linGrad = new LinearGradient();
+    		            		// calcutaling coordinates of starting points and ending points
+    		            		linGrad.createGradLinePoints(degAgl, bounds.width, bounds.height);
+    		            		// create color stops
+    		            		List<ColorStop> colorstops = ((TermFunction.LinearGradient) values).getColorStops();
+    		            		if (colorstops != null) {
+    		            			linGrad.createColorStopsLength(colorstops, dec, ((TermFunction.LinearGradient) values).isRepeating());
+			            			
+			            			float[] newStartXY = new float[2];
+			            			newStartXY = transXYtoPDF(elem, (float)(linGrad.x1 * resCoef), (float)(linGrad.y1 * resCoef), recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), i);
+			            			
+			            			float[] newEndXY = new float[2];
+			            			newEndXY = transXYtoPDF(elem, (float)(linGrad.x2 * resCoef), (float)(linGrad.y2 * resCoef), recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), i);
+			            			//create linear gradient
+			            			shading = linGrad.createLinearGrad(newStartXY[0], newStartXY[1], newEndXY[0], newEndXY[1]);
+			            			
+		            			}
+    		            	}
+    		            	else if (values instanceof TermFunction.RadialGradient) {
+        		            	radialGrad = true;
+        		            	
+        		            	RadialGradient radGrad = new RadialGradient();
+        		            	// gradient shape
+        		            	radGrad.setShape(((TermFunction.RadialGradient) values).getShape());
+    		            		// center point of gradient
+        		            	radGrad.setGradientCenter(((TermFunction.RadialGradient) values).getPosition(), dec, bounds.width, bounds.height);
+    		            		// radius
+    		            		TermLengthOrPercent[] size = ((TermFunction.RadialGradient) values).getSize();
+    		            		if (size != null) {
+    		            			radGrad.setRadiusFromSizeValue(size, dec, bounds.x, bounds.y, bounds.width, bounds.height);
+    		            		}
+    		            		
+    		            		TermIdent sizeIdent = ((TermFunction.RadialGradient) values).getSizeIdent(); 		            		
+    		            		if (sizeIdent != null) {
+    		            			radGrad.setRadiusFromSizeIdent(sizeIdent, bounds.width, bounds.height);
+    		            		}
+		            			// color stops
+		            			List<ColorStop> colorstops = ((TermFunction.RadialGradient) values).getColorStops();		            			
+		            			if (colorstops != null) {
+		            				radGrad.createColorStopsLength(colorstops, dec);
+
+			            			float[] newXY = new float[2];			            			
+			            			newXY = transXYtoPDF(elem, radGrad.cx * resCoef, radGrad.cy * resCoef, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), i);
+			            			
+			            			AffineTransform moveToCenter = new AffineTransform();
+			            			
+			            			if (radGrad.shape.equals("ellipse")) {		            				
+			            				moveToCenter = radGrad.createTransformForEllipseGradient(newXY[0], newXY[1]);
+			            			}
+			            			
+			            			radMatrix = new Matrix(moveToCenter);
+			            			if (radGrad.err)
+			            				shading = null;
+			            			else // creating radial gradient
+			            				shading = radGrad.createRadialGrad(newXY[0], newXY[1], (float)(radGrad.radc * resCoef));
+			            			
+		            			}// end if colorstops != null
+		                        
+    		            	} // end radial-gradient
+    		            }// end gradient
+       		            
+                    }
                     
                     // draws colored background
-                    drawBgToElem(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight());
+                    if (!isBorderRad)
+                    	drawBgToElem(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), radialGrad, linearGrad, shading, radMatrix);
                    
                     // draws background image
                     if (elem.getBackgroundImages() != null && elem.getBackgroundImages().size() > 0) {
-                        insertBgImg(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight());
+                        insertBgImg(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), PDFfilter, isBorderRad, borRad);
                     }
                     
                     // draws border
-                    drawBorder(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight());
+                    drawBorder(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), isBorderRad, borRad);
                 }
                 
                 // inserts text to PDF
                 if (recentNode.isText()) {
-               	
+                	
                 	// draws the text if it is not overlapping the parent element more then 60 %
                 	//		on the right side
                 	Node parent = recentNode.getTreeEq().getParentNode().getParentNode();
@@ -1011,7 +1188,8 @@ public class PDFRenderer implements BoxRenderer
                 	float widthRecentElem = recentNode.getElemWidth()*resCoef;
                 	
                 	if (parentRightEndOfElement-recentRightEndOfElement > -widthRecentElem*0.6) {
-	                	TextBox text = recentNode.getText();
+
+                		TextBox text = recentNode.getText();
 	                    if (text.isEmpty() || !text.isVisible() || !text.isDeclaredVisible() || !text.isDisplayed()) continue;
 	                    insertText(text, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight());
                 	}
@@ -1020,16 +1198,254 @@ public class PDFRenderer implements BoxRenderer
                 // inserts box data to PDF
                 if (recentNode.isBox()) {
                     ReplacedBox box = recentNode.getBox();
-                    insertImg(box, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight());
+                    
+                    insertImg(box, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), PDFfilter, isBorderRad, borRad);
                 }
+                
             } 
         }
+        return 0;
     }
     
     /**
+     * Draw an background, which is represented by radial-gradient() function
+     * @author Hoang Duong Nguyen
+     * @returns 0 for inserted OK, -1 for exception occurs
+     * @param lineWidth the width of the border line
+     * @param shading radial gradient to paint
+     * @param x x-axis of the element, which contains radial gradient background
+     * @param y y-axis of the element
+     * @param width width of the element
+     * @param height height of the element
+     * @param matrix matrix for the transformation from circle to eclipse gradient
+     */
+    private int drawBgGrad(float lineWidth, PDShadingType3 shading, float x, float y, float width, float height, Matrix matrix) {
+    	if (shading == null) return 1;
+        try {
+        	content.setLineWidth(lineWidth);
+        	content.addRect(x, y, width, height);
+			content.clip();
+			content.transform(matrix);
+			content.shadingFill(shading);
+            content.fill();
+            //content.restoreGraphicsState();
+        } catch (IOException e) {
+
+            e.printStackTrace();
+            return -1;
+        }
+        return 0;
+    }
+    
+    /**
+     * Transform the CSS coordinates to PDF coordinates.
+     * @return an array, which contains new x-axis([0]) and y-axis([1])
+     * @author Hoang Duong Nguyen
+     * @param elem element, which has the CSS coordinates
+     * @param x x-axis of the element
+     * @param y y-axis of the element
+     * @param plusOffset Offset of the element content
+     * @param plusHeight height outside the element content
+     * @param i number of the current page
+     */
+    private float[] transXYtoPDF(ElementBox elem, float x, float y, float plusOffset, float plusHeight, int i) {
+    	float[] xy = new float[2];
+    	
+        float paddingBottom = elem.getPadding().bottom*resCoef;
+        float paddingLeft =   elem.getPadding().left*resCoef;
+        
+            
+        xy[0] = elem.getAbsoluteContentX()*resCoef-paddingLeft + x;
+        xy[1] = (pageFormat.getHeight() - (elem.getAbsoluteContentY()*resCoef+plusOffset)+i*pageFormat.getHeight() - elem.getContentHeight()*resCoef-plusHeight-paddingBottom) + y;
+    	return xy;
+    }
+    
+    /**
+     * Set the CSS3 transform properties values.
+	 * @returns 0 for inserted OK, -1 for exception occurs and 1 for not recognised transform property
+     * @author Hoang Duong Nguyen
+     * @param recentnode represents current element in the TREE structure
+     * @param elem element, which contains transform property
+     * @param i number of the current page
+     * @param transf flag, which determines if the transform property is set
+     */
+    private int isTransform(Node recentNode, ElementBox elem, int i, boolean transf) {
+    	if (elem.isBlock() || elem.isReplaced())
+        {
+	    	CSSDecoder dec = new CSSDecoder(elem.getVisualContext());
+	        Rectangle bounds = elem.getAbsoluteContentBounds();
+	        //decode the origin
+	        int ox, oy;
+	        CSSProperty.TransformOrigin origin = elem.getStyle().getProperty("transform-origin");
+	        if (origin == CSSProperty.TransformOrigin.list_values)
+	        {
+	            TermList values = elem.getStyle().getValue(TermList.class, "transform-origin");
+	            ox = dec.getLength((TermLengthOrPercent) values.get(0), false, bounds.width / 2, 0, bounds.width);
+	            oy = dec.getLength((TermLengthOrPercent) values.get(1), false, bounds.height / 2, 0, bounds.height);
+	        }
+	        else
+	        {
+	            ox = bounds.width / 2;
+	            oy = bounds.height / 2;
+	        }
+	       
+	        float newXY[] = transXYtoPDF(elem, ox * resCoef, oy * resCoef, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), i);
+	        ox = (int)newXY[0];
+	        oy = (int)newXY[1];
+	        
+	        //compute the transformation matrix
+	        CSSProperty.Transform trans = elem.getStyle().getProperty("transform");
+	       
+	        if (trans == CSSProperty.Transform.list_values)
+	        {
+	        	AffineTransform ret = new AffineTransform();
+	            TermList values = elem.getStyle().getValue(TermList.class, "transform");
+	            float[] vals = new float[6];
+	            for (Term<?> term : values)
+	            {
+	            	
+	                if (term instanceof TermFunction.Rotate)
+	                {
+	                    double theta = dec.getAngle(((TermFunction.Rotate) term).getAngle());  
+	       
+	        			ret.rotate(-theta);
+	        			drawTransformPDF(ret, ox, oy, transf, "rotate");
+	                }
+	                else if (term instanceof TermFunction.Scale)
+                    {
+                        float sx = ((TermFunction.Scale) term).getScaleX();
+                        float sy = ((TermFunction.Scale) term).getScaleY();      
+                        ret.scale(sx, sy);
+                        drawTransformPDF(ret, ox, oy, transf, "scale");
+                    }
+                    else if (term instanceof TermFunction.ScaleX)
+                    {
+                        float sx = ((TermFunction.ScaleX) term).getScale();
+                        ret.scale(sx, 1.0f);
+                        drawTransformPDF(ret, ox, oy, transf, "scale");
+                    }
+                    else if (term instanceof TermFunction.ScaleY)
+                    {
+                        float sy = ((TermFunction.ScaleY) term).getScale();
+                        ret.scale(1.0f, sy);
+                        drawTransformPDF(ret, ox, oy, transf, "scale");
+                    }
+                    else if (term instanceof TermFunction.Skew)
+                    {
+                    	
+                        double anx = dec.getAngle(((TermFunction.Skew) term).getSkewX());
+                        double any = dec.getAngle(((TermFunction.Skew) term).getSkewY());
+                        ret.shear(Math.tan(-anx), Math.tan(-any));
+                        drawTransformPDF(ret, ox, oy, transf, "skew");
+                    }
+                    else if (term instanceof TermFunction.SkewX)
+                    {
+                        double anx = dec.getAngle(((TermFunction.SkewX) term).getSkew());
+                        ret.shear(Math.tan(-anx), 0.0);
+                        drawTransformPDF(ret, ox, oy, transf, "skew");
+                    }
+                    else if (term instanceof TermFunction.SkewY)
+                    {
+                        double any = dec.getAngle(((TermFunction.SkewY) term).getSkew());
+                        ret.shear(0.0, -any);
+                        drawTransformPDF(ret, ox, oy, transf, "skew");
+                    }
+                    else if (term instanceof TermFunction.Matrix)
+                    {
+                    	vals = new float[6];
+                        vals = ((TermFunction.Matrix) term).getValues();
+                        vals[1] = -vals[1];
+                        vals[2] = -vals[2]; // must be inverted because of coordinate system in PDF
+                        ret.concatenate(new AffineTransform(vals));
+                        vals[1] = -vals[1];
+                        vals[2] = -vals[2]; // return to the original value for other using
+                        drawTransformPDF(ret, ox, oy, transf, "matrix");
+                    }
+                    else if (term instanceof TermFunction.Translate)
+                    {
+                        int tx = dec.getLength(((TermFunction.Translate) term).getTranslateX(), false, 0, 0, bounds.width);
+                        int ty = dec.getLength(((TermFunction.Translate) term).getTranslateY(), false, 0, 0, bounds.height);
+                        ret.translate(tx * resCoef, -ty * resCoef); // - because of the different coordinate system in PDF; * rescoef becaouse fo the page ratio
+                        drawTransformPDF(ret, ox, oy, transf, "translate");
+                    }
+                    else if (term instanceof TermFunction.TranslateX)
+                    {
+                        int tx = dec.getLength(((TermFunction.TranslateX) term).getTranslate(), false, 0, 0, bounds.width);
+                        ret.translate(tx * resCoef, 0.0);
+                        drawTransformPDF(ret, ox, oy, transf, "translate");
+                    }
+                    else if (term instanceof TermFunction.TranslateY)
+                    {
+                        int ty = dec.getLength(((TermFunction.TranslateY) term).getTranslate(), false, 0, 0, bounds.height);
+                        ret.translate(0.0, -ty * resCoef);
+                        drawTransformPDF(ret, ox, oy, transf, "translate");
+                    }
+	                else
+	                {
+	                	try {
+	                		content.saveGraphicsState();
+	                		return 0;
+	                	}
+	                	catch (IOException e) 
+	                	{
+	                	    e.printStackTrace();
+	                	    return -1;
+	                	}
+	                }
+	            }
+	        }
+	        else
+	        	return 0;
+	        return 1;
+        }
+    	else
+    		return 0;
+    }
+    
+    /**
+     * Draw the transformation to PDF.
+     * @author Hoang Duong Nguyen
+     * @returns 0 for inserted OK, -1 for exception occurs
+     * @param aff class with information of transform
+     * @param ox x-axis of the element
+     * @param oy y-axis of the element
+     * @param transf flag, which determines if the transform is set for the element
+     * @param type type of the transform property
+     */
+    private int drawTransformPDF (AffineTransform aff, int ox, int oy, boolean transf, String type) {
+    	try {
+	    	if (!transf) {
+	    		
+	    		content.saveGraphicsState();
+	    	}
+	    	else {
+	    		
+	    		content.restoreGraphicsState();
+	    		content.saveGraphicsState();
+	    	}
+	    	Matrix matrix = new Matrix(aff);
+	    	if (type == "matrix") {
+	    		Matrix matrixb = new Matrix();
+	    		
+		    	matrix.concatenate(matrixb);
+	    	}
+	    	content.transform(Matrix.getTranslateInstance(ox, oy));
+			content.transform(matrix);
+			content.transform(Matrix.getTranslateInstance(-ox, -oy));
+	    
+    	}
+    	catch  (IOException e) {
+
+            e.printStackTrace();
+            return -1;
+        }
+    	return 0;
+    }
+
+    /**
      * Draws image gained from <img> tag to OUTPUT
      */
-    private void insertImg (ReplacedBox box, int i, float plusOffset, float plusHeight) {
+    private void insertImg (ReplacedBox box, int i, float plusOffset, float plusHeight, Filter filter, boolean isBorderRad, BorderRadius borRad) {
         
         ReplacedContent cont = box.getContentObj();
         if (cont != null) {
@@ -1040,13 +1456,17 @@ public class PDFRenderer implements BoxRenderer
                 
                 Rectangle cb = ((Box) box).getAbsoluteContentBounds();
                 if (img != null && cb.y*resCoef < pageEnd && (cb.y+img.getHeight())*resCoef+plusHeight+plusOffset > pageStart) {
-            
+                	img = filter.filterImg(img);
                     // calculates resized coordinates in CSSBox form
                     float startX = cb.x*resCoef;
-                    float startY = (cb.y*resCoef+plusOffset+plusHeight)-i*pageFormat.getHeight();
+                    float startY = (cb.y*resCoef+plusOffset+plusHeight)-i*pageFormat.getHeight(); // aby zistil pozicia y v jednej pdf stranke
                     float width = (float)cb.getWidth()*resCoef;
                     float height = (float)cb.getHeight()*resCoef+plusHeight;                 
-                    
+                    if (isBorderRad) { // if border radius is set
+                    	float radiusX = Math.max(Math.max(borRad.topLeftX, borRad.topRightX), Math.max(borRad.botLeftX, borRad.botRightX));
+                    	float radiusY = Math.max(Math.max(borRad.topLeftY, borRad.topRightY), Math.max(borRad.botLeftY, borRad.botRightY));
+                    	img = makeImgRadiusCorner(img, radiusX, radiusY);
+                    }
                     // inserts image
                     insertImagePDFBox(img, startX, startY, width, height);                            
                 }
@@ -1057,14 +1477,14 @@ public class PDFRenderer implements BoxRenderer
     /**
      * Draws element background image to OUTPUT
      */
-    private void insertBgImg (ElementBox elem, int i, float plusOffset, float plusHeight) {
+    private void insertBgImg (ElementBox elem, int i, float plusOffset, float plusHeight, Filter filter, boolean isBorderRad, BorderRadius borRad) {
     
         for (BackgroundImage bimg : elem.getBackgroundImages()) {
             BufferedImage img = bimg.getBufferedImage();
             float pageStart = i*pageFormat.getHeight();
             float pageEnd = (i+1)*pageFormat.getHeight();
             if (img != null && elem.getAbsoluteContentY()*resCoef+plusOffset < pageEnd && (elem.getAbsoluteContentY()+img.getHeight())*resCoef+plusOffset+plusHeight > pageStart) {
-                
+            	img = filter.filterImg(img);
                 // calculates resized coordinates in CSSBox form
                 float startX = (elem.getAbsoluteContentX()-elem.getPadding().left)*resCoef;
                 float startY = (elem.getAbsoluteContentY()-elem.getPadding().top)*resCoef+plusOffset-i*pageFormat.getHeight();
@@ -1073,6 +1493,13 @@ public class PDFRenderer implements BoxRenderer
                 
                 // correction of long backgrounds
                 if (height > 5*plusHeight) height += plusHeight;
+                
+                // if corner radius is set  
+                if (isBorderRad) { // if border radius is set
+                	float radiusX = Math.max(Math.max(borRad.topLeftX, borRad.topRightX), Math.max(borRad.botLeftX, borRad.botRightX));
+                	float radiusY = Math.max(Math.max(borRad.topLeftY, borRad.topRightY), Math.max(borRad.botLeftY, borRad.botRightY));
+                	img = makeImgRadiusCorner(img, radiusX*2, radiusY*2);
+                }
                 
                 // inserts image
                 insertImagePDFBox(img, startX, startY, width, height);
@@ -1085,10 +1512,10 @@ public class PDFRenderer implements BoxRenderer
      * 
      * @returns 0 for inserted OK, -1 for exception occurs and 1 for border out of page
      */
-    private int drawBorder(ElementBox elem, int i, float plusOffset, float plusHeight) {
+    private int drawBorder(ElementBox elem, int i, float plusOffset, float plusHeight, boolean isBorderRad, BorderRadius borRad) {
 
         final LengthSet border = elem.getBorder();
-        if (border.top > 0 || border.right > 0 || border.bottom > 0 || border.right > 0)
+        if (border.top > 0 || border.right > 0 || border.bottom > 0 || border.right > 0 || isBorderRad)
         {
         	// counts the distance between top of the document and the start/end of the page
             final float pageStart = i*pageFormat.getHeight();
@@ -1101,7 +1528,7 @@ public class PDFRenderer implements BoxRenderer
             // calculates resized X,Y coordinates in CSSBox form
             final float border_x = elem.getAbsoluteContentX()*resCoef;
             final float border_y = pageFormat.getHeight() - (elem.getAbsoluteContentY()*resCoef+plusOffset)+i*pageFormat.getHeight() - elem.getContentHeight()*resCoef-plusHeight;     
-    
+
             // calculates the padding for each side
             final float paddingTop =    elem.getPadding().top*resCoef;
             final float paddingRight =  elem.getPadding().right*resCoef;
@@ -1119,56 +1546,200 @@ public class PDFRenderer implements BoxRenderer
             final float elemHeight = elem.getContentHeight()*resCoef+plusHeight;
     
             float bX, bY, bWidth, bHeight;
-            try {
-    
-                // left border
-                if (borderLeftSize > 0)
-                {
-                    bX = border_x-borderLeftSize-paddingLeft;
-                    bY = border_y-borderBottomSize-paddingBottom;
-                    bWidth = borderLeftSize;
-                    bHeight = elemHeight+borderTopSize+borderBottomSize+paddingTop+paddingBottom;
-                    drawRectanglePDFBox(borderLeftSize, getBorderColor(elem, "left"), bX, bY, bWidth, bHeight);
-                }
-                
-                // right border
-                if (borderRightSize > 0)
-                {
-                    bX = border_x+elemWidth+paddingRight;
-                    bY = border_y-borderBottomSize-paddingBottom;
-                    bWidth = borderRightSize;
-                    bHeight = elemHeight+borderTopSize+borderBottomSize+paddingTop+paddingBottom;
-                    drawRectanglePDFBox(borderRightSize, getBorderColor(elem, "right"), bX, bY, bWidth, bHeight);
-                }
-                
-                // top border
-                if (borderTopSize > 0)
-                {
-                	bX = border_x-borderLeftSize-paddingLeft;
-                	bY = border_y+elemHeight+paddingTop;
-                	bWidth = elemWidth+borderLeftSize+borderRightSize+paddingLeft+paddingRight;
-                	bHeight = borderTopSize;
-                    drawRectanglePDFBox(borderTopSize, getBorderColor(elem, "top"), bX, bY, bWidth, bHeight);
-                }
-                
-                // bottom border
-                if (borderBottomSize > 0)
-                {
-                    bX = border_x-borderLeftSize-paddingLeft;
-                    bY = border_y-borderBottomSize-paddingBottom;
-                    bWidth = elemWidth+borderLeftSize+borderRightSize+paddingLeft+paddingRight;
-                    bHeight = borderBottomSize;
-                    drawRectanglePDFBox(borderBottomSize, getBorderColor(elem, "bottom"), bX, bY, bWidth, bHeight);
-                }
-            
+            // calculating points for creating border radius
+            if (isBorderRad) {
+            	ax = border_x + borRad.topLeftX - paddingLeft - borderLeftSize;
+      	      	ay = border_y + elem.getAbsoluteBorderBounds().height*resCoef - paddingTop - borderTopSize;
+      	      	bx = border_x + elem.getAbsoluteBorderBounds().width*resCoef - borRad.topRightX - paddingRight - borderRightSize;
+      	      	by = ay;
+      	      	cx = border_x + elem.getAbsoluteBorderBounds().width*resCoef - paddingRight - borderRightSize;
+      	      	cy = border_y + elem.getAbsoluteBorderBounds().height*resCoef - borRad.topRightY - paddingTop - borderTopSize;
+      	      	dx = cx;
+      	      	dy = border_y + borRad.botRightY - paddingBottom - borderBottomSize;
+      	      	ex = border_x + elem.getAbsoluteBorderBounds().width*resCoef - borRad.botRightX - paddingRight - borderRightSize;
+      	      	ey = border_y - paddingBottom - borderBottomSize;
+      	      	fx = border_x + borRad.botLeftX - paddingLeft - borderLeftSize;
+      	      	fy = ey;
+      	      	gx = border_x - paddingLeft - borderLeftSize;
+      	      	gy = border_y + borRad.botLeftY - paddingBottom - borderBottomSize;
+      	      	hx = gx;
+      	      	hy = border_y + elem.getAbsoluteBorderBounds().height*resCoef - borRad.topLeftY - borderLeftSize - paddingLeft;
+      	      	if (elem.getBgcolor() != null)
+      	      		drawBgInsideBorderRadius(elem, borderTopSize == 0? 0 : borderTopSize + 1, borderRightSize == 0? 0 : borderRightSize + 1, borderBottomSize == 0? 0 : borderBottomSize + 1, borderLeftSize == 0? 0 : borderLeftSize + 1, borRad);
+      	      	drawBorderRadius(elem, borderTopSize, borderRightSize, borderBottomSize, borderLeftSize, borRad);
             }
-            catch (Exception e) {
-                
-                e.printStackTrace();
-                return -1;
+            else {
+	            try {
+	    
+	                // left border
+	                if (borderLeftSize > 0)
+	                {
+	                    bX = border_x-borderLeftSize-paddingLeft;
+	                    bY = border_y-borderBottomSize-paddingBottom;
+	                    bWidth = borderLeftSize;
+	                    bHeight = elemHeight+borderTopSize+borderBottomSize+paddingTop+paddingBottom;
+	                    drawRectanglePDFBox(borderLeftSize, getBorderColor(elem, "left"), bX, bY, bWidth, bHeight);
+	                }
+	                
+	                // right border
+	                if (borderRightSize > 0)
+	                {
+	                    bX = border_x+elemWidth+paddingRight;
+	                    bY = border_y-borderBottomSize-paddingBottom;
+	                    bWidth = borderRightSize;
+	                    bHeight = elemHeight+borderTopSize+borderBottomSize+paddingTop+paddingBottom;
+	                    drawRectanglePDFBox(borderRightSize, getBorderColor(elem, "right"), bX, bY, bWidth, bHeight);
+	                }
+	                
+	                // top border
+	                if (borderTopSize > 0)
+	                {
+	                	bX = border_x-borderLeftSize-paddingLeft;
+	                	bY = border_y+elemHeight+paddingTop;
+	                	bWidth = elemWidth+borderLeftSize+borderRightSize+paddingLeft+paddingRight;
+	                	bHeight = borderTopSize;
+	                    drawRectanglePDFBox(borderTopSize, getBorderColor(elem, "top"), bX, bY, bWidth, bHeight);
+	                }
+	                
+	                // bottom border
+	                if (borderBottomSize > 0)
+	                {
+	                    bX = border_x-borderLeftSize-paddingLeft;
+	                    bY = border_y-borderBottomSize-paddingBottom;
+	                    bWidth = elemWidth+borderLeftSize+borderRightSize+paddingLeft+paddingRight;
+	                    bHeight = borderBottomSize;
+	                    drawRectanglePDFBox(borderBottomSize, getBorderColor(elem, "bottom"), bX, bY, bWidth, bHeight);
+	                }
+	            
+	            }
+	            catch (Exception e) {
+	                
+	                e.printStackTrace();
+	                return -1;
+	            }
             }
         }            
         return 0; 
+    }
+    
+    /*https://stackoverflow.com/questions/7603400/how-to-make-a-rounded-corner-image-in-java*/
+    public BufferedImage makeImgRadiusCorner(BufferedImage image, float cornerRadiusX, float cornerRadiusY) {
+        int w = (int) (image.getWidth());
+        int h = (int) (image.getHeight());
+        BufferedImage output = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+
+        Graphics2D g2 = output.createGraphics();
+
+        // This is what we want, but it only does hard-clipping, i.e. aliasing
+        // g2.setClip(new RoundRectangle2D ...)
+
+        // so instead fake soft-clipping by first drawing the desired clip shape
+        // in fully opaque white with antialiasing enabled...
+        g2.setComposite(AlphaComposite.Src);
+        RenderingHints qualityHints = new RenderingHints(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+        qualityHints.put(RenderingHints.KEY_RENDERING,RenderingHints.VALUE_RENDER_QUALITY);
+        g2.setRenderingHints(qualityHints);
+        g2.setColor(Color.WHITE);
+        g2.fill(new RoundRectangle2D.Float(0, 0, w, h, cornerRadiusX, cornerRadiusY));
+
+        // ... then compositing the image on top,
+        // using the white shape from above as alpha source
+        g2.setComposite(AlphaComposite.SrcAtop);
+        g2.drawImage(image, 0, 0, null);
+
+        g2.dispose();
+
+        return output;
+    }
+    
+    /**
+     * Draw the element background inside the border, it mays be deformed to the shape of the border.
+     * @author Hoang Duong Nguyen
+     * @returns 0 for inserted OK, -1 for exception occurs
+     * @param elem element with border-radius property
+     * @param bTopSize line width of top border side
+     * @param bRightSize line width of right border side
+     * @param bBotSize line width of bottom border side
+     * @param bLeftSize line width of left border side
+     * @param borRad class, which contains border radiuses of each corner
+     */
+    private int drawBgInsideBorderRadius(ElementBox elem, float bTopSize, float bRightSize, float bBotSize, float bLeftSize, BorderRadius borRad) {
+    	try {
+    		float bezier = 0.551915024494f;
+    		content.setLineWidth(1);
+    		content.setNonStrokingColor(elem.getBgcolor());
+    		content.setStrokingColor(elem.getBgcolor());
+    		// drawing inside border 
+    		content.moveTo(ax, ay - bTopSize);
+    		content.curveTo1((ax + bx) / 2, (ay + bTopSize + by - bTopSize) / 2, bx, by - bTopSize);
+  	      	content.curveTo(bx + bezier * borRad.topRightX, by - bTopSize, cx - bRightSize, cy + bezier * borRad.topRightY, cx - bRightSize, cy);
+  	      	content.curveTo1((cx - bRightSize + dx - bRightSize) / 2, (cy + dy) / 2, dx - bRightSize, dy);
+  	      	content.curveTo(dx - bRightSize, dy - bezier * borRad.botRightY, ex + bezier * borRad.botRightX, ey + bBotSize, ex, ey + bBotSize);
+  	      	content.curveTo1((ex + fx) / 2, (ey + bBotSize + fy + bBotSize) / 2, fx, fy + bBotSize);
+  	      	content.curveTo(fx - bezier * borRad.botLeftX, fy + bBotSize, gx + bLeftSize, gy - bezier * borRad.botLeftY, gx + bLeftSize, gy);
+  	      	content.curveTo1((gx + bLeftSize + hx + bLeftSize) / 2, (gy + hy) / 2, hx + bLeftSize, hy);
+  	      	content.curveTo(hx + bLeftSize, hy + bezier * borRad.topLeftY, ax - bezier * borRad.topLeftX, ay - bTopSize, ax, ay - bTopSize);
+  	      	content.fillAndStroke(); // insert background and colour of border
+    	}
+    	catch (Exception e) {
+			e.printStackTrace();
+            return -1;
+    	}
+    	return 0;
+    }
+    
+    /**
+     * Draw the border with rounded corner. 
+     * @author Hoang Duong Nguyen
+     * @returns 0 for inserted OK, -1 for exception occurs
+     * @param elem element with border-radius property
+     * @param bTopSize line width of top border side
+     * @param bRightSize line width of right border side
+     * @param bBotSize line width of bottom border side
+     * @param bLeftSize line width of left border side
+     * @param borRad class, which contains border radiuses of each corner
+     */
+    private int drawBorderRadius(ElementBox elem, float bTopSize, float bRightSize, float bBotSize, float bLeftSize, BorderRadius borRad) {
+    	try {
+    		float bezier = 0.551915024494f;
+    		if (bTopSize != 0) { // drawing top border
+    			content.setLineWidth(bTopSize);
+    			content.setStrokingColor(getBorderColor(elem, "top"));
+    			content.moveTo(ax,ay);
+    			content.curveTo1((ax + bx) / 2, (ay + by) / 2, bx, by);
+    			content.curveTo(bx + bezier * borRad.topRightX, by, cx, cy + bezier * borRad.topRightY, cx, cy);
+    			content.stroke();
+    		}
+    		if (bRightSize != 0) { // drawing right border
+    			content.setLineWidth(bRightSize);
+    			content.setStrokingColor(getBorderColor(elem, "right"));
+	  	    	content.moveTo(cx,cy);
+	  	    	content.curveTo1((cx + dx) / 2, (cy + dy) / 2, dx, dy);
+	  	    	content.curveTo(dx, dy - bezier * borRad.botRightY, ex + bezier * borRad.botRightX, ey, ex, ey);
+	  	    	content.stroke();
+    		}
+    		if (bBotSize != 0) { // drawing bot border
+    			content.setLineWidth(bBotSize);
+    			content.setStrokingColor(getBorderColor(elem, "bottom"));
+    			content.moveTo(ex,ey);
+    			content.curveTo1((ex + fx) / 2, (ey + fy) / 2, fx, fy);
+    			content.curveTo(fx - bezier * borRad.botLeftX, fy, gx, gy - bezier * borRad.botLeftY, gx, gy);
+    			content.stroke();
+    		}
+    		if (bLeftSize != 0) { // drawing left border
+    			content.setLineWidth(bLeftSize);
+    			content.setStrokingColor(getBorderColor(elem, "left"));
+    			content.moveTo(gx,gy);
+    			content.curveTo1((gx + hx) / 2, (gy + hy) / 2, hx, hy);
+    			content.curveTo(hx, hy + bezier * borRad.topLeftY, ax - bezier * borRad.topLeftX, ay, ax, ay);
+    			content.stroke();
+    		}
+    	}
+    	catch (Exception e) {
+    			e.printStackTrace();
+                return -1;
+    	}
+    	return 0;
     }
 
     /**
@@ -1176,13 +1747,13 @@ public class PDFRenderer implements BoxRenderer
      * 
      * @returns 0 for inserted OK, -1 for exception occurs and 1 for element completely out of page
      */
-    private int drawBgToElem(ElementBox elem, int i, float plusOffset, float plusHeight) {
+    private int drawBgToElem(ElementBox elem, int i, float plusOffset, float plusHeight, boolean radialGrad, boolean linearGrad, PDShadingType3 shading, Matrix matrix) {
         
         // checks if any color available
-        if (elem.getBgcolor() == null) return 0;
+        if ((elem.getBgcolor() == null) && (!radialGrad) && (!linearGrad)) return 0;
         
         // for root element the background color will be painted to background of whole page
-        if (elem.getParent() == null)
+        if ((elem.getParent() == null) && (!radialGrad) && (!linearGrad)) // TODO treba ptm pozmenit aby sa vykresluje gradient po celej strane
             return drawBgToWholePagePDFBox(elem.getBgcolor());
         
         // calculates the start and the end of current page
@@ -1203,10 +1774,20 @@ public class PDFRenderer implements BoxRenderer
             
             float border_x = elem.getAbsoluteContentX()*resCoef-paddingLeft;
             float border_y = pageFormat.getHeight() - (elem.getAbsoluteContentY()*resCoef+plusOffset)+i*pageFormat.getHeight() - elem.getContentHeight()*resCoef-plusHeight-paddingBottom;    
-                            
-            drawRectanglePDFBox (0, elem.getBgcolor(), border_x, border_y, (elem.getContentWidth())*resCoef+paddingLeft+paddingRight, elem.getContentHeight()*resCoef+paddingTop+paddingBottom+plusHeight);
+            if (radialGrad) { // if the background is radial gradient
+            	drawBgGrad(0, shading, border_x, border_y, (elem.getContentWidth())*resCoef+paddingLeft+paddingRight, elem.getContentHeight()*resCoef+paddingTop+paddingBottom+plusHeight, matrix);
+            	
+            }
+            else if (linearGrad) { // if is linear gradient
+            	drawBgGrad(0, shading, border_x, border_y, (elem.getContentWidth())*resCoef+paddingLeft+paddingRight, elem.getContentHeight()*resCoef+paddingTop+paddingBottom+plusHeight, matrix);
+            	
+            }
+            else {                
+            	drawRectanglePDFBox (0, elem.getBgcolor(), border_x, border_y, (elem.getContentWidth())*resCoef+paddingLeft+paddingRight, elem.getContentHeight()*resCoef+paddingTop+paddingBottom+plusHeight);
+            	
+            }
             
-       } catch (Exception e){
+        }catch (Exception e){
            
            	e.printStackTrace();
             return -1;
@@ -1251,8 +1832,8 @@ public class PDFRenderer implements BoxRenderer
         }
         
         //font.setFontEncoding(new PdfDocEncoding()); //TODO is this useful?
-        
-        String textToInsert = filterUnicode(text.getText());
+        //String textToInsert = filterUnicode(text.getText());
+        String textToInsert = text.getText();
         
         try {    	
             content.setNonStrokingColor(color);
@@ -1335,7 +1916,7 @@ public class PDFRenderer implements BoxRenderer
         
         try {
             content.close();
-            content = new PDPageContentStream(doc, page, true, true);
+            content = new PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true);
         } catch (IOException e) {
             e.printStackTrace();
             return -1;
@@ -1352,6 +1933,7 @@ public class PDFRenderer implements BoxRenderer
             content.setNonStrokingColor(bgColor);
             content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
             content.fill();
+            //content.restoreGraphicsState();
         } catch (IOException e) {
             e.printStackTrace();
             return -1;
@@ -1368,8 +1950,10 @@ public class PDFRenderer implements BoxRenderer
         try {
             content.setLineWidth(lineWidth);
             content.setNonStrokingColor(bgColor);
+           
             content.addRect(x, y, width, height);
             content.fill();
+            //content.restoreGraphicsState();
         } catch (IOException e) {
 
             e.printStackTrace();
@@ -1432,6 +2016,7 @@ public class PDFRenderer implements BoxRenderer
                 
                 content.addRect(x, y-yOffset, strokeWidth, resCoef*lineHeightCalibration);
                 content.fill();
+                //content.restoreGraphicsState();
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -1556,62 +2141,18 @@ public class PDFRenderer implements BoxRenderer
         CSSProperty.BorderStyle bst = elem.getStyle().getProperty("border-"+side+"-style");
 
         if (bst != CSSProperty.BorderStyle.HIDDEN && (tclr == null || !tclr.isTransparent())) {
-            if (tclr != null)
+            if (tclr != null) {
                 clr = CSSUnits.convertColor(tclr.getValue());
+            }
             if (clr == null) {
-                clr = elem.getVisualContext().getColor();
-                if (clr == null) clr = Color.BLACK;
+                if (elem.getBgcolor() != null) 
+                	clr = elem.getBgcolor();
+                else
+                	clr = Color.WHITE;    
             }
         }
         else { clr = elem.getBgcolor(); }
-        
         return clr;
-    }
-    
-    private String filterUnicode(String text) {
-        
-        //replace nbsp with spaces
-        text = text.replace('\u00A0', ' ');
-        text = text.replace('\u00AD', '-');
-        
-        if (replaceUnicode)
-        {
-            // removes diacritics
-            text = text.replace("\u010f","d"); text = text.replace("\u010e","D");
-            text = text.replace("\u011b","e"); text = text.replace("\u011a","E");
-            text = text.replace("\u0161","s"); text = text.replace("\u0160","S");
-            text = text.replace("\u010d","c"); text = text.replace("\u010c","C");         
-            text = text.replace("\u0159","r"); text = text.replace("\u0158","R"); 
-            text = text.replace("\u017e","z"); text = text.replace("\u017d","Z"); 
-            text = text.replace("\u016F","u"); text = text.replace("\u016E","U");
-            text = text.replace("\u0148","n"); text = text.replace("\u0147","N");
-            text = text.replace("\u0165","t"); text = text.replace("\u0164","T");        
-            text = text.replace("\u2013","\u002D");
-            // replaces apostrophe with equivalent
-            text = text.replace("\u2018", "\'"); text = text.replace("\u2019", "\'");
-            text = text.replace("\u201a", "\'"); text = text.replace("\u201b", "\'");
-            // replaces quote-marks with equivalent
-            text = text.replace("\u201c", "\""); text = text.replace("\u201d", "\"");
-            text = text.replace("\u201e", "\""); text = text.replace("\u201f", "\"");
-            // replaces three-dots-mark with three dots
-            text = text.replace("\u2026", "...");
-            // replaces vertical line with equivalent
-            text = text.replace("\u2502", "\u007C");
-            // replaces em dash with dash
-            text = text.replace("\u2014", "-");
-            // less then, more than
-            text = text.replace("\u2039", "<"); text = text.replace("\u203A", ">");
-            // replaces bullet point with alternative
-            text = text.replace("\u2022", "\u00B7");
-            // removes slovak diacritics
-            text = text.replace("\u013E", "l"); text = text.replace("\u013D", "L");
-            text = text.replace("\u013A", "l"); text = text.replace("\u0139", "L");        
-            text = text.replace("\u0151", "o"); text = text.replace("\u0150", "O");
-            text = text.replace("\u0155", "r"); text = text.replace("\u0154", "R");        
-            text = text.replace("\u0171", "u"); text = text.replace("\u0170", "U");
-        }
-        
-        return text;
     }
     
 }
