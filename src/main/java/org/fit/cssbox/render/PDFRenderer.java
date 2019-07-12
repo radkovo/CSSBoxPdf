@@ -992,13 +992,14 @@ public class PDFRenderer implements BoxRenderer
     	BorderRadius borRad = new BorderRadius();
         boolean isBorderRad = false;
     	boolean transf = false;
-        for (int i=0; i<pageCount; i++) {        
+        for (int i=0; i<pageCount; i++)
+        {        
             changeRecentPageToPDFBox(i);
             
             Vector<Node> elementsToWriteToPDF = new Vector<Node>(2);
             elementsToWriteToPDF.add(rootNodeOfList);
-            while (elementsToWriteToPDF.size()>0) {
-            	
+            while (elementsToWriteToPDF.size()>0) 
+            {
                 // get first element from Vector
                 Node recentNode = elementsToWriteToPDF.firstElement();
                 elementsToWriteToPDF.remove(0);
@@ -1008,23 +1009,34 @@ public class PDFRenderer implements BoxRenderer
                 if (allChildren != null) elementsToWriteToPDF.addAll(allChildren);
                 
                 // inserts elem data to PDF
-                if (recentNode.isElem())  {
+                if (recentNode.isElem())
+                {
                     ElementBox elem = recentNode.getElem();
-                    if(isTransform(recentNode, elem, i, transf) == 0) // if element has transform property
+                    if (insertTransform(recentNode, elem, i, transf)) // if element has transform property and successfully inserted
                     {
-                    	
-                    	transf = false;
-                    	try {
+                    	/*try {
                     		content.restoreGraphicsState();
+                            System.out.println("SAVE 1");
                     		content.saveGraphicsState();
                     	}
                     	catch(IOException e) {
                     	    e.printStackTrace();
-                    	    return -1;
-                    	}
+                    	}*/
+                        transf = true;
                     }
-                    else  	
-                    	transf = true;
+                    else
+                    {
+                        if (transf)
+                        {
+                            try {
+                                content.restoreGraphicsState();
+                            }
+                            catch(IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    	transf = false;
+                    }
                    
                     boolean radialGrad = false;
                     boolean linearGrad = false;
@@ -1228,7 +1240,6 @@ public class PDFRenderer implements BoxRenderer
 			content.transform(matrix);
 			content.shadingFill(shading);
             content.fill();
-            //content.restoreGraphicsState();
         } catch (IOException e) {
 
             e.printStackTrace();
@@ -1262,14 +1273,15 @@ public class PDFRenderer implements BoxRenderer
     
     /**
      * Set the CSS3 transform properties values.
-	 * @returns 0 for inserted OK, -1 for exception occurs and 1 for not recognised transform property
-     * @author Hoang Duong Nguyen
      * @param recentnode represents current element in the TREE structure
      * @param elem element, which contains transform property
      * @param i number of the current page
-     * @param transf flag, which determines if the transform property is set
+     * @param transf was there a previous transformation to restore after?
+     * @returns {@code true} for some transformation inserted OK, {@code false} for no transformation found
+     * @author Hoang Duong Nguyen
      */
-    private int isTransform(Node recentNode, ElementBox elem, int i, boolean transf) {
+    private boolean insertTransform(Node recentNode, ElementBox elem, int i, boolean transf)
+    {
     	if (elem.isBlock() || elem.isReplaced())
         {
 	    	CSSDecoder dec = new CSSDecoder(elem.getVisualContext());
@@ -1298,108 +1310,106 @@ public class PDFRenderer implements BoxRenderer
 	       
 	        if (trans == CSSProperty.Transform.list_values)
 	        {
+	            boolean transformed = false;
 	        	AffineTransform ret = new AffineTransform();
 	            TermList values = elem.getStyle().getValue(TermList.class, "transform");
-	            float[] vals = new float[6];
 	            for (Term<?> term : values)
 	            {
-	            	
 	                if (term instanceof TermFunction.Rotate)
 	                {
-	                    double theta = dec.getAngle(((TermFunction.Rotate) term).getAngle());  
-	       
+	                    final double theta = dec.getAngle(((TermFunction.Rotate) term).getAngle());  
 	        			ret.rotate(-theta);
-	        			drawTransformPDF(ret, ox, oy, transf, "rotate");
+	        			transformed = true;
 	                }
 	                else if (term instanceof TermFunction.Scale)
                     {
                         float sx = ((TermFunction.Scale) term).getScaleX();
                         float sy = ((TermFunction.Scale) term).getScaleY();      
                         ret.scale(sx, sy);
-                        drawTransformPDF(ret, ox, oy, transf, "scale");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.ScaleX)
                     {
                         float sx = ((TermFunction.ScaleX) term).getScale();
                         ret.scale(sx, 1.0f);
-                        drawTransformPDF(ret, ox, oy, transf, "scale");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.ScaleY)
                     {
                         float sy = ((TermFunction.ScaleY) term).getScale();
                         ret.scale(1.0f, sy);
-                        drawTransformPDF(ret, ox, oy, transf, "scale");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.Skew)
                     {
-                    	
                         double anx = dec.getAngle(((TermFunction.Skew) term).getSkewX());
                         double any = dec.getAngle(((TermFunction.Skew) term).getSkewY());
                         ret.shear(Math.tan(-anx), Math.tan(-any));
-                        drawTransformPDF(ret, ox, oy, transf, "skew");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.SkewX)
                     {
                         double anx = dec.getAngle(((TermFunction.SkewX) term).getSkew());
                         ret.shear(Math.tan(-anx), 0.0);
-                        drawTransformPDF(ret, ox, oy, transf, "skew");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.SkewY)
                     {
                         double any = dec.getAngle(((TermFunction.SkewY) term).getSkew());
                         ret.shear(0.0, -any);
-                        drawTransformPDF(ret, ox, oy, transf, "skew");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.Matrix)
                     {
-                    	vals = new float[6];
+                    	float[] vals = new float[6];
                         vals = ((TermFunction.Matrix) term).getValues();
-                        vals[1] = -vals[1];
-                        vals[2] = -vals[2]; // must be inverted because of coordinate system in PDF
+                        vals[1] = -vals[1]; // must be inverted because of coordinate system in PDF
+                        vals[2] = -vals[2];
+                        vals[5] = -vals[5];
                         ret.concatenate(new AffineTransform(vals));
-                        vals[1] = -vals[1];
-                        vals[2] = -vals[2]; // return to the original value for other using
-                        drawTransformPDF(ret, ox, oy, transf, "matrix");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.Translate)
                     {
                         int tx = dec.getLength(((TermFunction.Translate) term).getTranslateX(), false, 0, 0, bounds.width);
                         int ty = dec.getLength(((TermFunction.Translate) term).getTranslateY(), false, 0, 0, bounds.height);
                         ret.translate(tx * resCoef, -ty * resCoef); // - because of the different coordinate system in PDF; * rescoef becaouse fo the page ratio
-                        drawTransformPDF(ret, ox, oy, transf, "translate");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.TranslateX)
                     {
                         int tx = dec.getLength(((TermFunction.TranslateX) term).getTranslate(), false, 0, 0, bounds.width);
                         ret.translate(tx * resCoef, 0.0);
-                        drawTransformPDF(ret, ox, oy, transf, "translate");
+                        transformed = true;
                     }
                     else if (term instanceof TermFunction.TranslateY)
                     {
                         int ty = dec.getLength(((TermFunction.TranslateY) term).getTranslate(), false, 0, 0, bounds.height);
                         ret.translate(0.0, -ty * resCoef);
-                        drawTransformPDF(ret, ox, oy, transf, "translate");
+                        transformed = true;
                     }
-	                else
-	                {
-	                	try {
-	                		content.saveGraphicsState();
-	                		return 0;
-	                	}
-	                	catch (IOException e) 
-	                	{
-	                	    e.printStackTrace();
-	                	    return -1;
-	                	}
-	                }
 	            }
+	            
+	            if (transformed)
+	            {
+	                try
+                    {
+	                    if (transf)
+	                        content.restoreGraphicsState();
+                        content.saveGraphicsState();
+                    } catch (IOException e) {
+                    }
+                    drawTransformPDF(ret, ox, oy);
+                    return true;
+	            }
+	            else
+	                return false; //no transformation applied
 	        }
 	        else
-	        	return 0;
-	        return 1;
+	        	return false; //no transformation declared
         }
     	else
-    		return 0;
+    		return false; //not applicable for this element type
     }
     
     /**
@@ -1412,30 +1422,15 @@ public class PDFRenderer implements BoxRenderer
      * @param transf flag, which determines if the transform is set for the element
      * @param type type of the transform property
      */
-    private int drawTransformPDF (AffineTransform aff, int ox, int oy, boolean transf, String type) {
+    private int drawTransformPDF(AffineTransform aff, int ox, int oy) 
+    {
     	try {
-	    	if (!transf) {
-	    		
-	    		content.saveGraphicsState();
-	    	}
-	    	else {
-	    		
-	    		content.restoreGraphicsState();
-	    		content.saveGraphicsState();
-	    	}
 	    	Matrix matrix = new Matrix(aff);
-	    	if (type == "matrix") {
-	    		Matrix matrixb = new Matrix();
-	    		
-		    	matrix.concatenate(matrixb);
-	    	}
 	    	content.transform(Matrix.getTranslateInstance(ox, oy));
 			content.transform(matrix);
 			content.transform(Matrix.getTranslateInstance(-ox, -oy));
-	    
     	}
-    	catch  (IOException e) {
-
+    	catch (IOException e) {
             e.printStackTrace();
             return -1;
         }
@@ -1445,8 +1440,8 @@ public class PDFRenderer implements BoxRenderer
     /**
      * Draws image gained from <img> tag to OUTPUT
      */
-    private void insertImg (ReplacedBox box, int i, float plusOffset, float plusHeight, Filter filter, boolean isBorderRad, BorderRadius borRad) {
-        
+    private void insertImg (ReplacedBox box, int i, float plusOffset, float plusHeight, Filter filter, boolean isBorderRad, BorderRadius borRad) 
+    {
         ReplacedContent cont = box.getContentObj();
         if (cont != null) {
             if (cont instanceof ReplacedImage) {
@@ -1933,7 +1928,6 @@ public class PDFRenderer implements BoxRenderer
             content.setNonStrokingColor(bgColor);
             content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
             content.fill();
-            //content.restoreGraphicsState();
         } catch (IOException e) {
             e.printStackTrace();
             return -1;
@@ -1953,7 +1947,6 @@ public class PDFRenderer implements BoxRenderer
            
             content.addRect(x, y, width, height);
             content.fill();
-            //content.restoreGraphicsState();
         } catch (IOException e) {
 
             e.printStackTrace();
@@ -2016,7 +2009,6 @@ public class PDFRenderer implements BoxRenderer
                 
                 content.addRect(x, y-yOffset, strokeWidth, resCoef*lineHeightCalibration);
                 content.fill();
-                //content.restoreGraphicsState();
             }
         } catch (IOException e) {
             e.printStackTrace();
