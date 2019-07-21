@@ -1440,12 +1440,14 @@ public class PDFRenderer implements BoxRenderer
             return 1;
         try
         {
+            content.saveGraphicsState();
             content.setLineWidth(lineWidth);
             content.addRect(x, y, width, height);
             content.clip();
             content.transform(matrix);
             content.shadingFill(shading);
             content.fill();
+            content.restoreGraphicsState();
         } catch (IOException e) {
             e.printStackTrace();
             return -1;
