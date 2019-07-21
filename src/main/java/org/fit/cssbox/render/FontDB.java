@@ -1,6 +1,7 @@
 /**
  * 
  */
+
 package org.fit.cssbox.render;
 
 import java.net.URI;
@@ -17,12 +18,12 @@ import org.apache.fontbox.util.autodetect.FontFileFinder;
 public class FontDB
 {
     private Map<String, URI> fontTable;
-    
+
     public FontDB()
     {
         buildFontTable();
     }
-    
+
     private void buildFontTable()
     {
         fontTable = new HashMap<String, URI>();
@@ -38,34 +39,33 @@ public class FontDB
                 //System.out.println(name + " -> " + normalizeName(name));
             }
         }
-        
+
     }
-    
+
     public URI findFontURI(String family, boolean bold, boolean italic)
     {
         String[] search;
         if (bold && italic)
-            search = new String[]{"bolditalic", "italicbold", "bi", "bd", "boldoblique", "obliquebold"};
+            search = new String[] { "bolditalic", "italicbold", "bi", "bd", "boldoblique", "obliquebold" };
         else if (bold)
-            search = new String[]{"bold", "bd", "b"};
+            search = new String[] { "bold", "bd", "b" };
         else if (italic)
-            search = new String[]{"italic", "i", "oblique"};
+            search = new String[] { "italic", "i", "oblique" };
         else
-            search = new String[]{"", "r"};
-        
+            search = new String[] { "", "r" };
+
         String prefix = normalizeName(family);
         for (String cand : search)
         {
             URI uri = fontTable.get(prefix + cand);
-            if (uri != null)
-                return uri;
+            if (uri != null) return uri;
         }
         return null;
     }
-    
+
     private String normalizeName(String name)
     {
         return name.trim().toLowerCase().replaceAll("[^a-z]", "");
     }
-    
+
 }
