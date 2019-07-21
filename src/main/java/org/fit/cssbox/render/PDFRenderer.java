@@ -33,9 +33,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Vector;
-
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -75,7 +74,9 @@ import cz.vutbr.web.css.TermIdent;
 /**
  * A renderer that produces an PDF output using PDFBox library.
  * It can also render some of advanced CSS3 properties.
- * @author Zbynek Cervinka, Nguyen Hoang Duong
+ * @author Zbynek Cervinka
+ * @author Nguyen Hoang Duong
+ * @author Radek Burget
  */
 public class PDFRenderer implements BoxRenderer
 {
@@ -99,24 +100,24 @@ public class PDFRenderer implements BoxRenderer
     
     // TREE and LIST variables
     private Node rootNodeOfTree, recentNodeInTree, rootNodeOfList, recentNodeInList;
-    private Vector<Node> nodesWithoutParent = new Vector<Node>(16); 
+    private List<Node> nodesWithoutParent = new ArrayList<>(16); 
     
     // break/avoid tables
-    private Vector <float[]> breakTable = new Vector <float[]> (2);
-    private Vector <float[]> avoidTable = new Vector <float[]> (2);
+    private List<float[]> breakTable = new ArrayList<>(2);
+    private List <float[]> avoidTable = new ArrayList<>(2);
 
     // font variables
-    private Vector <fontTableRecord> fontTable = new Vector <fontTableRecord> (2);
+    private List <FontTableRecord> fontTable = new ArrayList<>(2);
     
     
-    private class fontTableRecord {
+    private class FontTableRecord {
     	
         public String fontName;
         public Boolean isBold;
         public Boolean isItalic;        
         public PDFont loadedFont;
         
-        fontTableRecord (String fontName,  Boolean isBold, Boolean isItalic, PDFont loadedFont) {
+        FontTableRecord (String fontName,  Boolean isBold, Boolean isItalic, PDFont loadedFont) {
         	
         	this.fontName = fontName;
         	this.isBold = isBold;
@@ -469,13 +470,13 @@ public class PDFRenderer implements BoxRenderer
             return recentNodeInTree.getParentNode();
         
         // goes through whole tree
-        Vector<Node> queueOpen = new Vector<Node>(16);
+        List<Node> queueOpen = new ArrayList<>(16);
         queueOpen.add(rootNodeOfTree);
         while (queueOpen.size() > 0) {
             
-            if (queueOpen.firstElement().getID() == parentID) return queueOpen.firstElement();
+            if (queueOpen.get(0).getID() == parentID) return queueOpen.get(0);
         
-            Vector<Node> children = queueOpen.firstElement().getAllChildren();
+            List<Node> children = queueOpen.get(0).getAllChildren();
             if (children != null) queueOpen.addAll(children);
             queueOpen.remove(0);
         }
@@ -491,12 +492,12 @@ public class PDFRenderer implements BoxRenderer
      */
     private void createBreakAvoidTables() {
         
-        Vector<Node> queueOpen = new Vector<Node>(16);
+        List<Node> queueOpen = new ArrayList<>(16);
         queueOpen.add(rootNodeOfTree);
         
         // goes through TREE
         while (queueOpen.size() > 0) {
-            Node recNodeToInvestigate = queueOpen.firstElement();
+            Node recNodeToInvestigate = queueOpen.get(0);
             queueOpen.remove(0);
 
             if (recNodeToInvestigate.isElem()) {
@@ -634,7 +635,7 @@ public class PDFRenderer implements BoxRenderer
     /**
      * Inserts record into breakTable or into avoidTable
      */
-    private void insertIntoTable(float[] tableRec, Vector<float[]> table) {
+    private void insertIntoTable(float[] tableRec, List<float[]> table) {
         
         boolean inserted = false;
         for (int i=0; i<table.size(); i++) {
@@ -714,17 +715,22 @@ public class PDFRenderer implements BoxRenderer
      */
     private Node getElementAbove(Node recentNode) {
  
-        if (recentNode == null) return null;
+        if (recentNode == null)
+            return null;
+        
         Node nParent = recentNode.getParentNode();
-        if (nParent == null) return null;
-        Vector <Node> nChildren = nParent.getAllChildren();     
-        if (nChildren == null) return null;
+        if (nParent == null)
+            return null;
+        
+        List<Node> nChildren = nParent.getAllChildren();     
+        if (nChildren == null)
+            return null;
         
         Node nodeX = null;
         // goes through whole TREE
         while (nChildren.size()>0) {
             
-            Node temp = nChildren.firstElement();
+            Node temp = nChildren.get(0);
             nChildren.remove(0);
        
             // if recent child's ID is equal to original nod's ID - continue
@@ -752,7 +758,7 @@ public class PDFRenderer implements BoxRenderer
         // gets Vector of all parents children (including the node itself)
         Node nParent = recentNode.getParentNode();
         if (nParent == null) return null;       
-        Vector<Node> nChildren = nParent.getAllChildren();
+        List<Node> nChildren = nParent.getAllChildren();
         
         if (nChildren == null) return null;     
         Node wantedNode = null;
@@ -761,7 +767,7 @@ public class PDFRenderer implements BoxRenderer
         while (nChildren.size()>0) {
                 
             // gets first element from Vector
-            Node temp = nChildren.firstElement();
+            Node temp = nChildren.get(0);
             nChildren.remove(0);
             
             // continues if recent node is the same as the original node
@@ -788,22 +794,25 @@ public class PDFRenderer implements BoxRenderer
      */
     private float getFirstTop(Node recentNode) {
 
-        if (recentNode == null) return -1;
-        Vector <Node> nChildren = recentNode.getAllChildren();      
-        if (nChildren == null) return recentNode.getElemY()*resCoef+recentNode.getPlusOffset();
+        if (recentNode == null)
+            return -1;
+        
+        List<Node> nChildren = recentNode.getAllChildren();      
+        if (nChildren == null)
+            return recentNode.getElemY()*resCoef+recentNode.getPlusOffset();
         
         float vysledekNeelem = Float.MAX_VALUE;
         float vysledekElem = Float.MAX_VALUE;
         
         // goes through subTREE and searches for first not-ElementBox element
         //		- in case it doesn't contain any not-ElementBox element, it would pick first ElementBox element
-        Vector <Node> subTree = nChildren;
+        List<Node> subTree = nChildren;
         
         while (subTree.size() > 0) {
             
-            Node aktualni = subTree.firstElement();
+            Node aktualni = subTree.get(0);
             subTree.remove(0);
-            Vector <Node> subChildren = aktualni.getAllChildren();
+            List<Node> subChildren = aktualni.getAllChildren();
             if (subChildren != null) subTree.addAll(subChildren);
             
             if (aktualni.isElem()) {
@@ -832,7 +841,7 @@ public class PDFRenderer implements BoxRenderer
     private float getLastBottom(Node recentNode) {
 
         if (recentNode == null) return -1;
-        Vector <Node> nChildren = recentNode.getAllChildren();      
+        List<Node> nChildren = recentNode.getAllChildren();      
         if (nChildren == null) return recentNode.getElemY()*resCoef+recentNode.getElemHeight()*resCoef+recentNode.getPlusOffset()+recentNode.getPlusHeight();
         
         float vysledekNeelem = -Float.MAX_VALUE;
@@ -840,14 +849,15 @@ public class PDFRenderer implements BoxRenderer
         
         // goes through subTREE and searches for last not-ElementBox element
         //		- in case it doesn't contain any not-ElementBox element, it would pick last ElementBox element
-        Vector <Node> subTree = nChildren;
+        List<Node> subTree = nChildren;
         
         while (subTree.size() > 0) {
             
-            Node aktualni = subTree.firstElement();
+            Node aktualni = subTree.get(0);
             subTree.remove(0);
-            Vector <Node> subChildren = aktualni.getAllChildren();
-            if (subChildren != null) subTree.addAll(subChildren);
+            List<Node> subChildren = aktualni.getAllChildren();
+            if (subChildren != null)
+                subTree.addAll(subChildren);
             
             if (aktualni.isElem()) {
                 if (aktualni.getElemY()*resCoef+aktualni.getElemHeight()*resCoef+aktualni.getPlusOffset()+aktualni.getPlusHeight()>vysledekElem)
@@ -880,15 +890,15 @@ public class PDFRenderer implements BoxRenderer
 
         // goes through TREE end finds set of all non-ElementbBox elements which are crossed by the line1
         // 		- picks one element from this set, which has the lowest distance from the top of the page
-        Vector<Node> myOpen = new Vector<Node>(2);
+        List<Node> myOpen = new ArrayList<>(2);
         myOpen.add(rootNodeOfTree);
         
         float line2 = line1;
         while (myOpen.size()>0) {
         
-            Node myRecentNode = myOpen.firstElement();
+            Node myRecentNode = myOpen.get(0);
             myOpen.remove(0);
-            Vector<Node> myChildren = myRecentNode.getAllChildren();
+            List<Node> myChildren = myRecentNode.getAllChildren();
             if (myChildren != null) { myOpen.addAll(myChildren); }
 
             float startOfTheElement = myRecentNode.getElemY()*resCoef + myRecentNode.getPlusOffset();
@@ -907,16 +917,18 @@ public class PDFRenderer implements BoxRenderer
         }        
         
         // counts line3
-        Vector<Node> myOpen2 = new Vector<Node>(2);
+        List<Node> myOpen2 = new ArrayList<>(2);
         myOpen2.add(rootNodeOfTree);
         
         float line3 = line2;
         while (myOpen2.size()>0) {
         
-            Node myRecentNode2 = myOpen2.firstElement();
+            Node myRecentNode2 = myOpen2.get(0);
             myOpen2.remove(0);
-            Vector<Node> myChildren2 = myRecentNode2.getAllChildren();
-            if (myChildren2 != null) { myOpen2.addAll(myChildren2); }
+            List<Node> myChildren2 = myRecentNode2.getAllChildren();
+            if (myChildren2 != null) { 
+                myOpen2.addAll(myChildren2); 
+            }
 
             float startOfTheElement = myRecentNode2.getElemY()*resCoef + myRecentNode2.getPlusOffset();
             float endOfTheElement = startOfTheElement + myRecentNode2.getElemHeight()*resCoef + myRecentNode2.getPlusHeight();
@@ -936,14 +948,14 @@ public class PDFRenderer implements BoxRenderer
         spaceBetweenLines = (float) (pageFormat.getHeight()*Math.ceil((line1-1)/pageFormat.getHeight()) - line3);
         
         // goes through TREE and increases height or moves element        
-        Vector<Node> myOpen3 = new Vector<Node>(2);
+        List<Node> myOpen3 = new ArrayList<>(2);
         myOpen3.add(rootNodeOfTree);
 
         while (myOpen3.size()>0) {
         
-            Node myRecentNode = myOpen3.firstElement();
+            Node myRecentNode = myOpen3.get(0);
             myOpen3.remove(0);
-            Vector<Node> myChildren = myRecentNode.getAllChildren();
+            List<Node> myChildren = myRecentNode.getAllChildren();
             if (myChildren != null) { myOpen3.addAll(myChildren); }
 
             // counts start and end of the element
@@ -994,25 +1006,25 @@ public class PDFRenderer implements BoxRenderer
     	boolean transf = false;
         for (int i=0; i<pageCount; i++)
         {        
-            changeRecentPageToPDFBox(i);
+            changeCurrentPageToPDFBox(i);
             
-            Vector<Node> elementsToWriteToPDF = new Vector<Node>(2);
+            List<Node> elementsToWriteToPDF = new ArrayList<>(2);
             elementsToWriteToPDF.add(rootNodeOfList);
             while (elementsToWriteToPDF.size()>0) 
             {
                 // get first element from Vector
-                Node recentNode = elementsToWriteToPDF.firstElement();
+                Node currentNode = elementsToWriteToPDF.get(0);
                 elementsToWriteToPDF.remove(0);
                 
                 // get all children of recentNode and add to elementsToWriteToPDF
-                Vector<Node> allChildren = recentNode.getAllChildren();
+                List<Node> allChildren = currentNode.getAllChildren();
                 if (allChildren != null) elementsToWriteToPDF.addAll(allChildren);
                 
                 // inserts elem data to PDF
-                if (recentNode.isElem())
+                if (currentNode.isElem())
                 {
-                    ElementBox elem = recentNode.getElem();
-                    if (insertTransform(recentNode, elem, i, transf)) // if element has transform property and successfully inserted
+                    ElementBox elem = currentNode.getElem();
+                    if (insertTransform(currentNode, elem, i, transf)) // if element has transform property and successfully inserted
                     {
                     	/*try {
                     		content.restoreGraphicsState();
@@ -1122,10 +1134,10 @@ public class PDFRenderer implements BoxRenderer
     		            			linGrad.createColorStopsLength(colorstops, dec, ((TermFunction.LinearGradient) values).isRepeating());
 			            			
 			            			float[] newStartXY = new float[2];
-			            			newStartXY = transXYtoPDF(elem, (float)(linGrad.x1 * resCoef), (float)(linGrad.y1 * resCoef), recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), i);
+			            			newStartXY = transXYtoPDF(elem, (float)(linGrad.x1 * resCoef), (float)(linGrad.y1 * resCoef), currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(), i);
 			            			
 			            			float[] newEndXY = new float[2];
-			            			newEndXY = transXYtoPDF(elem, (float)(linGrad.x2 * resCoef), (float)(linGrad.y2 * resCoef), recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), i);
+			            			newEndXY = transXYtoPDF(elem, (float)(linGrad.x2 * resCoef), (float)(linGrad.y2 * resCoef), currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(), i);
 			            			//create linear gradient
 			            			shading = linGrad.createLinearGrad(newStartXY[0], newStartXY[1], newEndXY[0], newEndXY[1]);
 			            			
@@ -1155,7 +1167,7 @@ public class PDFRenderer implements BoxRenderer
 		            				radGrad.createColorStopsLength(colorstops, dec);
 
 			            			float[] newXY = new float[2];			            			
-			            			newXY = transXYtoPDF(elem, radGrad.cx * resCoef, radGrad.cy * resCoef, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), i);
+			            			newXY = transXYtoPDF(elem, radGrad.cx * resCoef, radGrad.cy * resCoef, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(), i);
 			            			
 			            			AffineTransform moveToCenter = new AffineTransform();
 			            			
@@ -1178,40 +1190,40 @@ public class PDFRenderer implements BoxRenderer
                     
                     // draws colored background
                     if (!isBorderRad)
-                    	drawBgToElem(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), radialGrad, linearGrad, shading, radMatrix);
+                    	drawBgToElem(elem, i, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(), radialGrad, linearGrad, shading, radMatrix);
                    
                     // draws background image
                     if (elem.getBackgroundImages() != null && elem.getBackgroundImages().size() > 0) {
-                        insertBgImg(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), PDFfilter, isBorderRad, borRad);
+                        insertBgImg(elem, i, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(), PDFfilter, isBorderRad, borRad);
                     }
                     
                     // draws border
-                    drawBorder(elem, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), isBorderRad, borRad);
+                    drawBorder(elem, i, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(), isBorderRad, borRad);
                 }
                 
                 // inserts text to PDF
-                if (recentNode.isText()) {
+                if (currentNode.isText()) {
                 	
                 	// draws the text if it is not overlapping the parent element more then 60 %
                 	//		on the right side
-                	Node parent = recentNode.getTreeEq().getParentNode().getParentNode();
+                	Node parent = currentNode.getTreeEq().getParentNode().getParentNode();
                 	float parentRightEndOfElement = (parent.getElemX() + parent.getElemWidth())*resCoef;
-                	float recentRightEndOfElement = (recentNode.getElemX() + recentNode.getElemWidth())*resCoef;
-                	float widthRecentElem = recentNode.getElemWidth()*resCoef;
+                	float recentRightEndOfElement = (currentNode.getElemX() + currentNode.getElemWidth())*resCoef;
+                	float widthRecentElem = currentNode.getElemWidth()*resCoef;
                 	
                 	if (parentRightEndOfElement-recentRightEndOfElement > -widthRecentElem*0.6) {
 
-                		TextBox text = recentNode.getText();
+                		TextBox text = currentNode.getText();
 	                    if (text.isEmpty() || !text.isVisible() || !text.isDeclaredVisible() || !text.isDisplayed()) continue;
-	                    insertText(text, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight());
+	                    insertText(text, i, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight());
                 	}
                 }
                 
                 // inserts box data to PDF
-                if (recentNode.isBox()) {
-                    ReplacedBox box = recentNode.getBox();
+                if (currentNode.isBox()) {
+                    ReplacedBox box = currentNode.getBox();
                     
-                    insertImg(box, i, recentNode.getTreeEq().getPlusOffset(), recentNode.getTreeEq().getPlusHeight(), PDFfilter, isBorderRad, borRad);
+                    insertImg(box, i, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(), PDFfilter, isBorderRad, borRad);
                 }
                 
             } 
@@ -1823,7 +1835,7 @@ public class PDFRenderer implements BoxRenderer
         }
         if (font == null) {
         	font = setFont(fontFamily, isItalic, isBold);
-        	fontTable.add(new fontTableRecord(fontFamily, isBold, isItalic, font));
+        	fontTable.add(new FontTableRecord(fontFamily, isBold, isItalic, font));
         }
         
         //font.setFontEncoding(new PdfDocEncoding()); //TODO is this useful?
@@ -1896,7 +1908,7 @@ public class PDFRenderer implements BoxRenderer
     private int insertNPagesPDFBox(int pageCount) {
         
         for (int i=1; i<pageCount; i++) {
-            page = new PDPage(pageFormat);
+            PDPage page = new PDPage(pageFormat);
             doc.addPage(page);
         }
         return 0;
@@ -1905,7 +1917,7 @@ public class PDFRenderer implements BoxRenderer
     /**
      * Changes recent page using PDFBox
      */
-    private int changeRecentPageToPDFBox(int i) {
+    private int changeCurrentPageToPDFBox(int i) {
         
         page = (PDPage)doc.getDocumentCatalog().getPages().get(i);
         
