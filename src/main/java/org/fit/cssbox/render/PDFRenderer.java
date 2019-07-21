@@ -1142,9 +1142,8 @@ public class PDFRenderer implements BoxRenderer
      */
     private int writeAllElementsToPDF()
     {
-        // goes through all pages in PDF and inserts to all elements to current
-        // page
-        Filter PDFfilter = new Filter(null, 0, 0, 1.0f, 1.0f);
+        // goes through all pages in PDF and inserts to all elements to current page
+        Filter pdfFilter = new Filter(null, 0, 0, 1.0f, 1.0f);
         BorderRadius borRad = new BorderRadius();
         boolean isBorderRad = false;
         boolean transf = false;
@@ -1195,55 +1194,21 @@ public class PDFRenderer implements BoxRenderer
 
                     if (elem.isBlock() || elem.isReplaced())
                     {
+                        // filter
                         CSSDecoder dec = new CSSDecoder(elem.getVisualContext());
                         Rectangle bounds = elem.getAbsoluteBorderBounds();
                         CSSProperty.Filter filter = elem.getStyle().getProperty("filter");
                         if (filter == CSSProperty.Filter.list_values)
                         {
-                            TermList values = elem.getStyle().getValue(TermList.class, "filter");
-                            int n = 0;
-                            String[] filterType = new String[10];
-                            float invert = 0;
-                            float grayscale = 0;
-                            float opacity = 1;
-                            float brightness = 1;
-                            for (Term<?> term : values)
-                            {
-                                if (term instanceof TermFunction.Invert)
-                                {
-                                    filterType[n] = "invert";
-                                    invert = ((TermFunction.Invert) term).getAmount();
-                                }
-                                else if (term instanceof TermFunction.Brightness)
-                                {
-                                    filterType[n] = "bright";
-                                    brightness = ((TermFunction.Brightness) term).getAmount();
-                                }
-                                else if (term instanceof TermFunction.Opacity)
-                                {
-                                    filterType[n] = "opacity";
-                                    opacity = ((TermFunction.Opacity) term).getAmount();
-                                }
-                                else if (term instanceof TermFunction.Grayscale)
-                                {
-                                    filterType[n] = "grayscale";
-                                    grayscale = 1;
-                                }
-                                else
-                                    filterType[n] = "";
-
-                                n++;
-                            }
-                            PDFfilter = new Filter(filterType, invert, grayscale, opacity, brightness);
+                            pdfFilter = createFilter(elem);
                         }
 
-                        // CSSProperty.BorderRadius borderRad =
-                        // elem.getStyle().getProperty("border-radius");
+                        // border-radius
                         TermList value1 = elem.getStyle().getValue(TermList.class, "border-top-right-radius");
                         TermList value2 = elem.getStyle().getValue(TermList.class, "border-top-left-radius");
                         TermList value3 = elem.getStyle().getValue(TermList.class, "border-bottom-right-radius");
                         TermList value4 = elem.getStyle().getValue(TermList.class, "border-bottom-left-radius");
-                        if ((value1 != null) || (value2 != null) || (value3 != null) || (value4 != null))
+                        if (value1 != null || value2 != null || value3 != null || value4 != null)
                         {
                             isBorderRad = true;
                             borRad.setCornerRadius(value2, value1, value4, value3, elem, resCoef);
@@ -1253,6 +1218,7 @@ public class PDFRenderer implements BoxRenderer
                             isBorderRad = false;
                             borRad = new BorderRadius(); // calculating corner radiuses
                         }
+                        
                         CSSProperty.BackgroundImage backgrd = elem.getStyle().getProperty("background-image");
 
                         if (backgrd == CSSProperty.BackgroundImage.gradient)
@@ -1350,18 +1316,18 @@ public class PDFRenderer implements BoxRenderer
                                 } // end if colorstops != null
                             } // end radial-gradient
                         } // end gradient
-
                     }
 
                     // draws colored background
-                    if (!isBorderRad) drawBgToElem(elem, i, currentNode.getTreeEq().getPlusOffset(),
+                    if (!isBorderRad)
+                        drawBgToElem(elem, i, currentNode.getTreeEq().getPlusOffset(),
                             currentNode.getTreeEq().getPlusHeight(), radialGrad, linearGrad, shading, radMatrix);
 
                     // draws background image
                     if (elem.getBackgroundImages() != null && elem.getBackgroundImages().size() > 0)
                     {
                         insertBgImg(elem, i, currentNode.getTreeEq().getPlusOffset(),
-                                currentNode.getTreeEq().getPlusHeight(), PDFfilter, isBorderRad, borRad);
+                                currentNode.getTreeEq().getPlusHeight(), pdfFilter, isBorderRad, borRad);
                     }
 
                     // draws border
@@ -1395,11 +1361,55 @@ public class PDFRenderer implements BoxRenderer
                 {
                     ReplacedBox box = currentNode.getBox();
                     insertImg(box, i, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(),
-                            PDFfilter, isBorderRad, borRad);
+                            pdfFilter, isBorderRad, borRad);
                 }
             }
         }
         return 0;
+    }
+
+    /**
+     * Creates a filter structure based on the element style.
+     * @param elem the element
+     * @return a filter structure
+     */
+    private Filter createFilter(ElementBox elem)
+    {
+        TermList values = elem.getStyle().getValue(TermList.class, "filter");
+        int n = 0;
+        String[] filterType = new String[10];
+        float invert = 0;
+        float grayscale = 0;
+        float opacity = 1;
+        float brightness = 1;
+        for (Term<?> term : values)
+        {
+            if (term instanceof TermFunction.Invert)
+            {
+                filterType[n] = "invert";
+                invert = ((TermFunction.Invert) term).getAmount();
+            }
+            else if (term instanceof TermFunction.Brightness)
+            {
+                filterType[n] = "bright";
+                brightness = ((TermFunction.Brightness) term).getAmount();
+            }
+            else if (term instanceof TermFunction.Opacity)
+            {
+                filterType[n] = "opacity";
+                opacity = ((TermFunction.Opacity) term).getAmount();
+            }
+            else if (term instanceof TermFunction.Grayscale)
+            {
+                filterType[n] = "grayscale";
+                grayscale = 1;
+            }
+            else
+                filterType[n] = "";
+
+            n++;
+        }
+        return new Filter(filterType, invert, grayscale, opacity, brightness);
     }
 
     /**
@@ -1426,7 +1436,8 @@ public class PDFRenderer implements BoxRenderer
     private int drawBgGrad(float lineWidth, PDShadingType3 shading, float x, float y, float width, float height,
             Matrix matrix)
     {
-        if (shading == null) return 1;
+        if (shading == null)
+            return 1;
         try
         {
             content.setLineWidth(lineWidth);
@@ -2041,9 +2052,9 @@ public class PDFRenderer implements BoxRenderer
     private int drawBgToElem(ElementBox elem, int i, float plusOffset, float plusHeight, boolean radialGrad,
             boolean linearGrad, PDShadingType3 shading, Matrix matrix)
     {
-
         // checks if any color available
-        if ((elem.getBgcolor() == null) && (!radialGrad) && (!linearGrad)) return 0;
+        if ((elem.getBgcolor() == null) && (!radialGrad) && (!linearGrad)) 
+            return 0;
 
         // for root element the background color will be painted to background
         // of whole page
@@ -2094,7 +2105,6 @@ public class PDFRenderer implements BoxRenderer
 
         } catch (Exception e)
         {
-
             e.printStackTrace();
             return -1;
         }
