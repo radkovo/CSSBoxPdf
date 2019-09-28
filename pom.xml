@@ -9,9 +9,6 @@
 	 -->
 	 
 	<modelVersion>4.0.0</modelVersion>
-	<prerequisites>
-		<maven>3.0.4</maven>
-	</prerequisites>
 
 	<groupId>net.sf.cssbox</groupId>
 	<artifactId>cssbox-pdf</artifactId>
