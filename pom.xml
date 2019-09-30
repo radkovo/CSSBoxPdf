@@ -12,7 +12,7 @@
 
 	<groupId>net.sf.cssbox</groupId>
 	<artifactId>cssbox-pdf</artifactId>
-	<version>1.0-SNAPSHOT</version>
+	<version>1.0</version>
 	<name>CSSBoxPdf</name>
 	<description>
 	PDF renderer for the CSSBox rendering engine.
@@ -46,7 +46,7 @@
 		<url>https://github.com/radkovo/CSSBoxPdf</url>
 		<connection>scm:git:git@github.com:radkovo/CSSBoxPdf.git</connection>
 		<developerConnection>scm:git:git@github.com:radkovo/CSSBoxPdf.git</developerConnection>
-		<tag>HEAD</tag>
+		<tag>cssbox-pdf-1.0</tag>
 	</scm>
 
 	<properties>
