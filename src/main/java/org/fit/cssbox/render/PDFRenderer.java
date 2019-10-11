@@ -2121,7 +2121,6 @@ public class PDFRenderer implements BoxRenderer
      */
     private int insertText(TextBox text, int i, float plusOffset, float plusHeight)
     {
-
         // counts the distance between top of the document and the start/end of
         // the page
         float pageStart = i * pageFormat.getHeight();
@@ -2137,7 +2136,7 @@ public class PDFRenderer implements BoxRenderer
         float fontSize = ctx.getFont().getSize() * resCoef;
         boolean isBold = ctx.getFont().isBold();
         boolean isItalic = ctx.getFont().isItalic();
-        boolean isUnderlined = ctx.getTextDecorationString().equals("underline");
+        boolean isUnderlined = text.getEfficientTextDecoration().contains(CSSProperty.TextDecoration.UNDERLINE);
         String fontFamily = ctx.getFont().getFamily();
         Color color = ctx.getColor();
 
