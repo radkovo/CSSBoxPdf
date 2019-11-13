@@ -6,10 +6,10 @@
 
 package org.fit.cssbox.render;
 
-import java.awt.Rectangle;
 import java.util.Vector;
 
 import org.fit.cssbox.layout.ElementBox;
+import org.fit.cssbox.layout.Rectangle;
 import org.fit.cssbox.layout.ReplacedBox;
 import org.fit.cssbox.layout.TextBox;
 import org.fit.cssbox.layout.Box;
@@ -98,7 +98,7 @@ public class Node
     {
 
         // gets the distance of new element from the top of the page
-        int y = 0;
+        float y = 0;
 
         if (elem != null)
         {
@@ -138,7 +138,7 @@ public class Node
         if (newChild == null) return null;
 
         // gets the distance of new element from the top of the page
-        int y = newChild.getElemY();
+        float y = newChild.getElemY();
 
         // goes through child node and inserts new node to right place
         for (int x = 0; x < nodeChildren.size(); x++)
@@ -184,7 +184,7 @@ public class Node
     /**
      * Returns the distance of stored ELEM/TEXT/BOX from top of the page
      */
-    public int getElemY()
+    public float getElemY()
     {
 
         if (this.elem != null)
@@ -206,7 +206,7 @@ public class Node
     /**
      * Returns the distance of stored ELEM/TEXT/BOX from left side of the page
      */
-    public int getElemX()
+    public float getElemX()
     {
 
         if (this.elem != null)
@@ -228,7 +228,7 @@ public class Node
     /**
      * Returns height of stored ELEM/TEXT/BOX
      */
-    public int getElemHeight()
+    public float getElemHeight()
     {
 
         if (this.elem != null)
@@ -250,7 +250,7 @@ public class Node
     /**
      * Returns width of stored ELEM/TEXT/BOX
      */
-    public int getElemWidth()
+    public float getElemWidth()
     {
 
         if (this.elem != null)

@@ -1,10 +1,9 @@
 
 package org.fit.cssbox.render;
 
-import java.awt.Rectangle;
-
 import org.fit.cssbox.layout.CSSDecoder;
 import org.fit.cssbox.layout.ElementBox;
+import org.fit.cssbox.layout.Rectangle;
 
 import cz.vutbr.web.css.TermLengthOrPercent;
 import cz.vutbr.web.css.TermList;

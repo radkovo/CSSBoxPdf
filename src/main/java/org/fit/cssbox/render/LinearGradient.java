@@ -1,7 +1,6 @@
 
 package org.fit.cssbox.render;
 
-import java.awt.Color;
 import java.util.List;
 
 import org.apache.pdfbox.cos.COSArray;
@@ -14,11 +13,11 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
-import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.layout.CSSDecoder;
 
 import cz.vutbr.web.css.TermColor;
 import cz.vutbr.web.css.TermFunction.Gradient.ColorStop;
+import cz.vutbr.web.csskit.Color;
 
 /**
  * This class creates the linear gradient background.
@@ -27,7 +26,6 @@ import cz.vutbr.web.css.TermFunction.Gradient.ColorStop;
  */
 public class LinearGradient
 {
-
     public double x1;
     public double y1;
     public double x2;
@@ -47,7 +45,7 @@ public class LinearGradient
      * @param h
      *            height of the element
      */
-    public void createGradLinePoints(double angle, int w, int h)
+    public void createGradLinePoints(double angle, float w, float h)
     {
         double procDeg = (angle) % 360;
         if (procDeg < 0)
@@ -64,21 +62,21 @@ public class LinearGradient
         {
             wRatio = (double) w / h;
         }
-        int sx = w / 2;
-        int sy = h / 2;
+        float sx = w / 2;
+        float sy = h / 2;
 
         // calculating coordinates of corners of the element
-        int ax = 0;
-        int ay = h;
+        float ax = 0;
+        float ay = h;
 
-        int bx = w;
-        int by = h;
+        float bx = w;
+        float by = h;
 
-        int cx = w;
-        int cy = 0;
+        float cx = w;
+        float cy = 0;
 
-        int dx = 0;
-        int dy = 0;
+        float dx = 0;
+        float dy = 0;
 
         if (procDeg == 0)
         {
@@ -194,7 +192,7 @@ public class LinearGradient
             {
                 boolean isLength = false;
                 TermColor col = colorstops.get(n).getColor();
-                colors[n] = CSSUnits.convertColor(col.getValue());
+                colors[n] = col.getValue();
                 if ((colorstops.get(n).getLength() != null))
                 {
                     if (!colorstops.get(n).getLength().isPercentage()) isLength = true;

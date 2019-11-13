@@ -22,9 +22,7 @@
 package org.fit.cssbox.render;
 
 import java.awt.AlphaComposite;
-import java.awt.Color;
 import java.awt.Graphics2D;
-import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.RoundRectangle2D;
@@ -43,6 +41,8 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
@@ -54,6 +54,7 @@ import org.fit.cssbox.layout.CSSDecoder;
 import org.fit.cssbox.layout.ElementBox;
 import org.fit.cssbox.layout.LengthSet;
 import org.fit.cssbox.layout.ListItemBox;
+import org.fit.cssbox.layout.Rectangle;
 import org.fit.cssbox.layout.ReplacedBox;
 import org.fit.cssbox.layout.ReplacedContent;
 import org.fit.cssbox.layout.ReplacedImage;
@@ -68,6 +69,7 @@ import cz.vutbr.web.css.TermFunction;
 
 import cz.vutbr.web.css.TermLengthOrPercent;
 import cz.vutbr.web.css.TermList;
+import cz.vutbr.web.csskit.Color;
 import cz.vutbr.web.css.TermFunction.Gradient.ColorStop;
 import cz.vutbr.web.css.TermIdent;
 
@@ -136,7 +138,7 @@ public class PDFRenderer implements BoxRenderer
      * 
      * initialize the variables
      */
-    public PDFRenderer(int rootWidth, int rootHeight, OutputStream out, String pageFormat)
+    public PDFRenderer(float rootWidth, float rootHeight, OutputStream out, String pageFormat)
     {
         this.rootHeight = rootHeight;
         this.pathToSave = out;
@@ -176,7 +178,7 @@ public class PDFRenderer implements BoxRenderer
         initSettings(rootWidth);
     }
 
-    public PDFRenderer(int rootWidth, int rootHeight, OutputStream out, PDRectangle pageFormat)
+    public PDFRenderer(float rootWidth, float rootHeight, OutputStream out, PDRectangle pageFormat)
     {
         this.rootHeight = rootHeight;
         this.pathToSave = out;
@@ -185,7 +187,7 @@ public class PDFRenderer implements BoxRenderer
         initSettings(rootWidth);
     }
 
-    private void initSettings(int rootWidth)
+    private void initSettings(float rootWidth)
     {
         // calculate resize coefficient
         resCoef = this.pageFormat.getWidth() / rootWidth;
@@ -1508,7 +1510,7 @@ public class PDFRenderer implements BoxRenderer
             CSSDecoder dec = new CSSDecoder(elem.getVisualContext());
             Rectangle bounds = elem.getAbsoluteContentBounds();
             // decode the origin
-            int ox, oy;
+            float ox, oy;
             CSSProperty.TransformOrigin origin = elem.getStyle().getProperty("transform-origin");
             if (origin == CSSProperty.TransformOrigin.list_values)
             {
@@ -1594,9 +1596,9 @@ public class PDFRenderer implements BoxRenderer
                     }
                     else if (term instanceof TermFunction.Translate)
                     {
-                        int tx = dec.getLength(((TermFunction.Translate) term).getTranslateX(), false, 0, 0,
+                        float tx = dec.getLength(((TermFunction.Translate) term).getTranslateX(), false, 0, 0,
                                 bounds.width);
-                        int ty = dec.getLength(((TermFunction.Translate) term).getTranslateY(), false, 0, 0,
+                        float ty = dec.getLength(((TermFunction.Translate) term).getTranslateY(), false, 0, 0,
                                 bounds.height);
                         ret.translate(tx * resCoef, -ty * resCoef); // - because
                                                                     // of the
@@ -1613,14 +1615,14 @@ public class PDFRenderer implements BoxRenderer
                     }
                     else if (term instanceof TermFunction.TranslateX)
                     {
-                        int tx = dec.getLength(((TermFunction.TranslateX) term).getTranslate(), false, 0, 0,
+                        float tx = dec.getLength(((TermFunction.TranslateX) term).getTranslate(), false, 0, 0,
                                 bounds.width);
                         ret.translate(tx * resCoef, 0.0);
                         transformed = true;
                     }
                     else if (term instanceof TermFunction.TranslateY)
                     {
-                        int ty = dec.getLength(((TermFunction.TranslateY) term).getTranslate(), false, 0, 0,
+                        float ty = dec.getLength(((TermFunction.TranslateY) term).getTranslate(), false, 0, 0,
                                 bounds.height);
                         ret.translate(0.0, -ty * resCoef);
                         transformed = true;
@@ -1665,7 +1667,7 @@ public class PDFRenderer implements BoxRenderer
      * @param type
      *            type of the transform property
      */
-    private int drawTransformPDF(AffineTransform aff, int ox, int oy)
+    private int drawTransformPDF(AffineTransform aff, float ox, float oy)
     {
         try
         {
@@ -1897,8 +1899,8 @@ public class PDFRenderer implements BoxRenderer
      */
     public BufferedImage makeImgRadiusCorner(BufferedImage image, float cornerRadiusX, float cornerRadiusY)
     {
-        int w = (int) (image.getWidth());
-        int h = (int) (image.getHeight());
+        int w = image.getWidth();
+        int h = image.getHeight();
         BufferedImage output = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
 
         Graphics2D g2 = output.createGraphics();
@@ -1913,7 +1915,7 @@ public class PDFRenderer implements BoxRenderer
                 RenderingHints.VALUE_ANTIALIAS_ON);
         qualityHints.put(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g2.setRenderingHints(qualityHints);
-        g2.setColor(Color.WHITE);
+        g2.setColor(java.awt.Color.WHITE);
         g2.fill(new RoundRectangle2D.Float(0, 0, w, h, cornerRadiusX, cornerRadiusY));
 
         // ... then compositing the image on top,
@@ -1952,8 +1954,8 @@ public class PDFRenderer implements BoxRenderer
         {
             float bezier = 0.551915024494f;
             content.setLineWidth(1);
-            content.setNonStrokingColor(elem.getBgcolor());
-            content.setStrokingColor(elem.getBgcolor());
+            content.setNonStrokingColor(toPDColor(elem.getBgcolor()));
+            content.setStrokingColor(toPDColor(elem.getBgcolor()));
             // drawing inside border
             content.moveTo(ax, ay - bTopSize);
             content.curveTo1((ax + bx) / 2, (ay + bTopSize + by - bTopSize) / 2, bx, by - bTopSize);
@@ -2100,7 +2102,7 @@ public class PDFRenderer implements BoxRenderer
             }
             else
             {
-                drawRectanglePDFBox(0, elem.getBgcolor(), border_x, border_y,
+                drawRectanglePDFBox(0, toPDColor(elem.getBgcolor()), border_x, border_y,
                         (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
                         elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight);
             }
@@ -2133,11 +2135,11 @@ public class PDFRenderer implements BoxRenderer
 
         // gets data describing the text
         VisualContext ctx = text.getVisualContext();
-        float fontSize = ctx.getFont().getSize() * resCoef;
-        boolean isBold = ctx.getFont().isBold();
-        boolean isItalic = ctx.getFont().isItalic();
+        float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef); //TODO pt vs px
+        boolean isBold = ctx.getFontInfo().isBold();
+        boolean isItalic = ctx.getFontInfo().isItalic();
         boolean isUnderlined = text.getEfficientTextDecoration().contains(CSSProperty.TextDecoration.UNDERLINE);
-        String fontFamily = ctx.getFont().getFamily();
+        String fontFamily = ctx.getFontInfo().getFamily();
         Color color = ctx.getColor();
 
         // if font is not in fontTable we load it
@@ -2161,7 +2163,7 @@ public class PDFRenderer implements BoxRenderer
 
         try
         {
-            content.setNonStrokingColor(color);
+            content.setNonStrokingColor(toPDColor(color));
             float leading = 2f * fontSize;
 
             // counts the resized coordinates in CSSBox form
@@ -2265,7 +2267,7 @@ public class PDFRenderer implements BoxRenderer
 
         try
         {
-            content.setNonStrokingColor(bgColor);
+            content.setNonStrokingColor(toPDColor(bgColor));
             content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
             content.fill();
         } catch (IOException e)
@@ -2279,7 +2281,7 @@ public class PDFRenderer implements BoxRenderer
     /**
      * Inserts rectangle to recent PDF page using PDFBox
      */
-    private int drawRectanglePDFBox(float lineWidth, Color bgColor, float x, float y, float width, float height)
+    private int drawRectanglePDFBox(float lineWidth, PDColor bgColor, float x, float y, float width, float height)
     {
         if (bgColor == null)
             return 1;
@@ -2517,7 +2519,7 @@ public class PDFRenderer implements BoxRenderer
     /**
      * Returns color of border
      */
-    private Color getBorderColor(ElementBox elem, String side)
+    private PDColor getBorderColor(ElementBox elem, String side)
     {
         Color clr = null;
         // gets the color value from CSS property
@@ -2528,21 +2530,32 @@ public class PDFRenderer implements BoxRenderer
         {
             if (tclr != null)
             {
-                clr = CSSUnits.convertColor(tclr.getValue());
+                clr = tclr.getValue();
             }
             if (clr == null)
             {
                 if (elem.getBgcolor() != null)
                     clr = elem.getBgcolor();
                 else
-                    clr = Color.WHITE;
+                    clr = new Color(255, 255, 255);
             }
         }
         else
         {
             clr = elem.getBgcolor();
         }
-        return clr;
+        if (clr == null)
+            clr = new Color(255, 255, 255);
+        return toPDColor(clr);
     }
 
+    private PDColor toPDColor(Color color)
+    {
+        if (color == null)
+            return null;
+        float[] components = new float[] {
+                color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f };
+        return new PDColor(components, PDDeviceRGB.INSTANCE);
+    }
+    
 }

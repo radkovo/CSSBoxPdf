@@ -1,7 +1,6 @@
 
 package org.fit.cssbox.render;
 
-import java.awt.Color;
 import java.awt.geom.AffineTransform;
 import java.util.List;
 
@@ -15,12 +14,12 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShading;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
-import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.layout.CSSDecoder;
 
 import cz.vutbr.web.css.TermColor;
 import cz.vutbr.web.css.TermIdent;
 import cz.vutbr.web.css.TermLengthOrPercent;
+import cz.vutbr.web.csskit.Color;
 import cz.vutbr.web.css.TermFunction.Gradient.ColorStop;
 
 /**
@@ -31,8 +30,8 @@ import cz.vutbr.web.css.TermFunction.Gradient.ColorStop;
 public class RadialGradient
 {
     // coordinates of center point
-    int cx;
-    int cy;
+    float cx;
+    float cy;
 
     // radiuses of ending shape
     // radiuses of ellipse
@@ -77,7 +76,7 @@ public class RadialGradient
      * @param h
      *            height of the element
      */
-    public void setGradientCenter(TermLengthOrPercent[] pos, CSSDecoder dec, int w, int h)
+    public void setGradientCenter(TermLengthOrPercent[] pos, CSSDecoder dec, float w, float h)
     {
         cx = dec.getLength(pos[0], false, w / 2, 0, w);
         cy = dec.getLength(pos[1], false, h / 2, 0, h);
@@ -102,7 +101,7 @@ public class RadialGradient
      * @param h
      *            height of the element
      */
-    public void setRadiusFromSizeValue(TermLengthOrPercent[] size, CSSDecoder dec, int x, int y, int w, int h)
+    public void setRadiusFromSizeValue(TermLengthOrPercent[] size, CSSDecoder dec, float x, float y, float w, float h)
     {
         if (size != null)
         {
@@ -142,7 +141,7 @@ public class RadialGradient
      * @param y
      *            y-axis of the element
      */
-    public void setRadiusFromSizeIdent(TermIdent sizeIdent, int w, int h)
+    public void setRadiusFromSizeIdent(TermIdent sizeIdent, float w, float h)
     {
         // vzdialenosti od centra gradientu do jednotlivej strany elementu
         double side1 = Math.abs(0 - cx);
@@ -221,7 +220,7 @@ public class RadialGradient
         for (int n = 1; n <= colorstops.size(); n++)
         {
             TermColor col = colorstops.get(p).getColor();
-            colors[n] = CSSUnits.convertColor(col.getValue());
+            colors[n] = col.getValue();
             colorLen[n] = dec.getLength(colorstops.get(p).getLength(), false, 0, 0, 100);
             colorLen[n] /= 100;
             if (colorLen[n] == 0)
