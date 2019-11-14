@@ -124,30 +124,32 @@ public class PdfImageRenderer
         da.addStyleSheet(null, CSSNorm.formsStyleSheet(), DOMAnalyzer.Origin.AGENT); //render form fields using css
         da.getStyleSheets(); //load the author style sheets
 
-        GraphicsEngine contentCanvas = new GraphicsEngine(da.getRoot(), da, docSource.getURL());
-        contentCanvas.setAutoMediaUpdate(false); //we have a correct media specification, do not update
-        contentCanvas.getConfig().setClipViewport(cropWindow);
-        contentCanvas.getConfig().setLoadImages(loadImages);
-        contentCanvas.getConfig().setLoadBackgroundImages(loadBackgroundImages);
+        GraphicsEngine engine = new GraphicsEngine(da.getRoot(), da, docSource.getURL());
+        engine.setUseFractionalMetrics(true); //fractional metrics are useful for vector output 
+        engine.setUseKerning(false); //pdfbox doesn't support kerning at the moment
+        engine.setAutoMediaUpdate(false); //we have a correct media specification, do not update
+        engine.getConfig().setClipViewport(cropWindow);
+        engine.getConfig().setLoadImages(loadImages);
+        engine.getConfig().setLoadBackgroundImages(loadBackgroundImages);
 
         if (type == Type.PNG)
         {
-            contentCanvas.createLayout(windowSize);
-            ImageIO.write(contentCanvas.getImage(), "png", out);
+            engine.createLayout(windowSize);
+            ImageIO.write(engine.getImage(), "png", out);
         }
         else if (type == Type.SVG)
         {
-            setDefaultFonts(contentCanvas.getConfig());
-            contentCanvas.createLayout(windowSize);
+            setDefaultFonts(engine.getConfig());
+            engine.createLayout(windowSize);
             Writer w = new OutputStreamWriter(out, "utf-8");
-            writeSVG(contentCanvas.getViewport(), w);
+            writeSVG(engine.getViewport(), w);
             w.close();
         }
         else if (type == Type.PDF)
         {
-            setDefaultFonts(contentCanvas.getConfig());
-            contentCanvas.createLayout(windowSize);
-            writePDF(contentCanvas.getViewport(), out, pageFormat);
+            setDefaultFonts(engine.getConfig());
+            engine.createLayout(windowSize);
+            writePDF(engine.getViewport(), out, pageFormat);
         }
 
         docSource.close();
