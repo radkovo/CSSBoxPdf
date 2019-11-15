@@ -25,10 +25,6 @@ import java.awt.Font;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-
-import javax.imageio.ImageIO;
 
 import org.fit.cssbox.css.CSSNorm;
 import org.fit.cssbox.css.DOMAnalyzer;
@@ -41,7 +37,6 @@ import org.fit.cssbox.layout.Dimension;
 import org.fit.cssbox.layout.GraphicsEngine;
 import org.fit.cssbox.layout.Viewport;
 import org.fit.cssbox.render.PDFRenderer;
-import org.fit.cssbox.render.SVGRenderer;
 import org.w3c.dom.Document;
 import org.xml.sax.SAXException;
 
@@ -55,8 +50,6 @@ import cz.vutbr.web.css.MediaSpec;
  */
 public class PdfImageRenderer
 {
-    public enum Type { PNG, SVG, PDF };
-    
     private String mediaType = "screen";
     private Dimension windowSize;
     private boolean cropWindow = false;
@@ -90,11 +83,10 @@ public class PdfImageRenderer
      * format.
      * @param urlstring the source URL
      * @param out output stream
-     * @param type output type
      * @return true in case of success, false otherwise
      * @throws SAXException 
      */
-    public boolean renderURL(String urlstring, OutputStream out, Type type, String pageFormat) throws IOException, SAXException
+    public boolean renderURL(String urlstring, OutputStream out, String pageFormat) throws IOException, SAXException
     {
         if (!urlstring.startsWith("http:") &&
             !urlstring.startsWith("https:") &&
@@ -132,25 +124,9 @@ public class PdfImageRenderer
         engine.getConfig().setLoadImages(loadImages);
         engine.getConfig().setLoadBackgroundImages(loadBackgroundImages);
 
-        if (type == Type.PNG)
-        {
-            engine.createLayout(windowSize);
-            ImageIO.write(engine.getImage(), "png", out);
-        }
-        else if (type == Type.SVG)
-        {
-            setDefaultFonts(engine.getConfig());
-            engine.createLayout(windowSize);
-            Writer w = new OutputStreamWriter(out, "utf-8");
-            writeSVG(engine.getViewport(), w);
-            w.close();
-        }
-        else if (type == Type.PDF)
-        {
-            setDefaultFonts(engine.getConfig());
-            engine.createLayout(windowSize);
-            writePDF(engine.getViewport(), out, pageFormat);
-        }
+        setDefaultFonts(engine.getConfig());
+        engine.createLayout(windowSize);
+        writePDF(engine.getViewport(), out, pageFormat);
 
         docSource.close();
 
@@ -167,23 +143,6 @@ public class PdfImageRenderer
         config.setDefaultFont(Font.MONOSPACED, "Courier New");
     }
     
-    /**
-     * Renders the viewport using an SVGRenderer to the given output writer.
-     * @param vp
-     * @param out
-     * @throws IOException
-     */
-    protected void writeSVG(Viewport vp, Writer out) throws IOException
-    {
-        //obtain the viewport bounds depending on whether we are clipping to viewport size or using the whole page
-        float w = vp.getClippedContentBounds().width;
-        float h = vp.getClippedContentBounds().height;
-        
-        SVGRenderer render = new SVGRenderer(w, h, out);
-        vp.draw(render);
-        render.close();
-    }
-
     /**
      * Renders the viewport using an PDFRenderer to the given output writer.
      * @param vp
@@ -209,38 +168,23 @@ public class PdfImageRenderer
         
         if (args.length != 3 && !(args.length == 4 && args[2].equalsIgnoreCase("pdf"))) {
             
-            System.err.println("Usage: PdfImageRenderer <url> <output_file> <format> <pdf_page_format>");
+            System.err.println("Usage: PdfImageRenderer <url> <output_file> <pdf_page_format>");
             System.err.println();
-            System.err.println("Renders a document at the specified URL and stores the document image");
+            System.err.println("Renders a document at the specified URL and stores the resulting PDF");
             System.err.println("to the specified file.");
-            System.err.println("Supported formats:");
-            System.err.println("   png: a Portable Network Graphics file (bitmap image)");
-            System.err.println("   svg: a SVG file (vector image)");
-            System.err.println("   pdf: a PDF file\n");
             System.err.println("pdf_page_format: optional parameter and only with argument pdf");
             System.err.println("Supported page formats: A0, A1, A2, A3, A4, A5, A6 or LETTER");
             System.exit(0);
         }
         
         try {
-            Type type = null;
-            if (args[2].equalsIgnoreCase("png"))
-                type = Type.PNG;
-            else if (args[2].equalsIgnoreCase("svg"))
-                type = Type.SVG;
-            else if (args[2].equalsIgnoreCase("pdf"))
-                type = Type.PDF;
-            else
-            {
-                System.err.println("Error: unknown format");
-                System.exit(0);
-            }
-           
             FileOutputStream os = new FileOutputStream(args[1]);           
             PdfImageRenderer r = new PdfImageRenderer();
             
-            if (args.length == 4) r.renderURL(args[0], os, type, args[3]);
-            else r.renderURL(args[0], os, type, "");
+            if (args.length == 3)
+                r.renderURL(args[0], os, args[2]);
+            else
+                r.renderURL(args[0], os, "");
    
             os.close();
             System.err.println("Done.");
