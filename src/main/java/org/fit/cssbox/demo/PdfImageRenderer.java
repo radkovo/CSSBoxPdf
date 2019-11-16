@@ -21,10 +21,10 @@
  */
 package org.fit.cssbox.demo;
 
-import java.awt.Font;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Arrays;
 
 import org.fit.cssbox.css.CSSNorm;
 import org.fit.cssbox.css.DOMAnalyzer;
@@ -123,8 +123,8 @@ public class PdfImageRenderer
         engine.getConfig().setClipViewport(cropWindow);
         engine.getConfig().setLoadImages(loadImages);
         engine.getConfig().setLoadBackgroundImages(loadBackgroundImages);
-
-        setDefaultFonts(engine.getConfig());
+        defineLogicalFonts(engine.getConfig());
+        
         engine.createLayout(windowSize);
         writePDF(engine.getViewport(), out, pageFormat);
 
@@ -136,11 +136,11 @@ public class PdfImageRenderer
     /**
      * Sets some common fonts as the defaults for generic font families.
      */
-    protected void setDefaultFonts(BrowserConfig config)
+    protected void defineLogicalFonts(BrowserConfig config)
     {
-        config.setDefaultFont(Font.SERIF, "Times New Roman");
-        config.setDefaultFont(Font.SANS_SERIF, "Arial");
-        config.setDefaultFont(Font.MONOSPACED, "Courier New");
+        config.setLogicalFont(BrowserConfig.SERIF, Arrays.asList("Times", "Times New Roman"));
+        config.setLogicalFont(BrowserConfig.SANS_SERIF, Arrays.asList("Arial", "Helvetica"));
+        config.setLogicalFont(BrowserConfig.MONOSPACE, Arrays.asList("Courier New", "Courier"));
     }
     
     /**
