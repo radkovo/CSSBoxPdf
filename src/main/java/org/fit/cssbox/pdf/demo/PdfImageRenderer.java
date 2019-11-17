@@ -34,9 +34,7 @@ import org.fit.cssbox.io.DefaultDocumentSource;
 import org.fit.cssbox.io.DocumentSource;
 import org.fit.cssbox.layout.BrowserConfig;
 import org.fit.cssbox.layout.Dimension;
-import org.fit.cssbox.layout.GraphicsEngine;
-import org.fit.cssbox.layout.Viewport;
-import org.fit.cssbox.pdf.PDFRenderer;
+import org.fit.cssbox.pdf.PDFEngine;
 import org.w3c.dom.Document;
 import org.xml.sax.SAXException;
 
@@ -116,9 +114,7 @@ public class PdfImageRenderer
         da.addStyleSheet(null, CSSNorm.formsStyleSheet(), DOMAnalyzer.Origin.AGENT); //render form fields using css
         da.getStyleSheets(); //load the author style sheets
 
-        GraphicsEngine engine = new GraphicsEngine(da.getRoot(), da, docSource.getURL());
-        engine.setUseFractionalMetrics(true); //fractional metrics are useful for vector output 
-        engine.setUseKerning(false); //pdfbox doesn't support kerning at the moment
+        PDFEngine engine = new PDFEngine(pageFormat, da.getRoot(), da, docSource.getURL());
         engine.setAutoMediaUpdate(false); //we have a correct media specification, do not update
         engine.getConfig().setClipViewport(cropWindow);
         engine.getConfig().setLoadImages(loadImages);
@@ -126,7 +122,8 @@ public class PdfImageRenderer
         defineLogicalFonts(engine.getConfig());
         
         engine.createLayout(windowSize);
-        writePDF(engine.getViewport(), out, pageFormat);
+        engine.saveDocument(out);
+        engine.closeDocument();
 
         docSource.close();
 
@@ -142,24 +139,6 @@ public class PdfImageRenderer
         config.setLogicalFont(BrowserConfig.SANS_SERIF, Arrays.asList("Arial", "Helvetica"));
         config.setLogicalFont(BrowserConfig.MONOSPACE, Arrays.asList("Courier New", "Courier"));
     }
-    
-    /**
-     * Renders the viewport using an PDFRenderer to the given output writer.
-     * @param vp
-     * @param out
-     * @throws IOException
-     */
-    protected void writePDF(Viewport vp, OutputStream out, String pageFormat) throws IOException
-    {
-        //obtain the viewport bounds depending on whether we are clipping to viewport size or using the whole page
-        float w = vp.getClippedContentBounds().width;
-        float h = vp.getClippedContentBounds().height;
-        
-        PDFRenderer render = new PDFRenderer(w, h, out, pageFormat);
-        vp.draw(render);
-        render.close();
-    }    
-    
     
     //=================================================================================
     

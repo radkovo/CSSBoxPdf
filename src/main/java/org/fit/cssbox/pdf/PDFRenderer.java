@@ -29,7 +29,6 @@ import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -130,61 +129,17 @@ public class PDFRenderer implements BoxRenderer
     };
 
     // other variables
-    private OutputStream pathToSave;
     private float outputTopPadding;
     private float outputBottomPadding;
 
-    /**
-     * Constructor
-     * 
-     * initialize the variables
-     */
-    public PDFRenderer(float rootWidth, float rootHeight, OutputStream out, String pageFormat)
+
+    public PDFRenderer(float rootWidth, float rootHeight, PDDocument doc)
     {
         this.rootHeight = rootHeight;
-        this.pathToSave = out;
+        this.doc = doc;
+        this.page = doc.getPage(0);
+        this.pageFormat = page.getMediaBox();
         this.pageCount = 0;
-
-        switch (pageFormat)
-        {
-            case "A0":
-                this.pageFormat = PDRectangle.A0;
-                break;
-            case "A1":
-                this.pageFormat = PDRectangle.A1;
-                break;
-            case "A2":
-                this.pageFormat = PDRectangle.A2;
-                break;
-            case "A3":
-                this.pageFormat = PDRectangle.A3;
-                break;
-            case "A4":
-                this.pageFormat = PDRectangle.A4;
-                break;
-            case "A5":
-                this.pageFormat = PDRectangle.A5;
-                break;
-            case "A6":
-                this.pageFormat = PDRectangle.A6;
-                break;
-            case "LETTER":
-                this.pageFormat = PDRectangle.LETTER;
-                break;
-            default:
-                this.pageFormat = PDRectangle.A4;
-                break;
-        }
-
-        initSettings(rootWidth);
-    }
-
-    public PDFRenderer(float rootWidth, float rootHeight, OutputStream out, PDRectangle pageFormat)
-    {
-        this.rootHeight = rootHeight;
-        this.pathToSave = out;
-        this.pageCount = 0;
-        this.pageFormat = pageFormat;
         initSettings(rootWidth);
     }
 
@@ -341,7 +296,6 @@ public class PDFRenderer implements BoxRenderer
     @Override
     public void close()
     {
-
         // FINISH STEP B - process the nodesWithoutParent table and insert nodes
         // to TREE, if possible
         tryToInsertNotInsertedNodes();
@@ -490,9 +444,8 @@ public class PDFRenderer implements BoxRenderer
      */
     private void makePDF()
     {
-
         // creates PDF document with first blank page
-        createDocPDFBox();
+        initContentStream();
 
         // inserts all needed blank pages to PDF document
         insertNPagesPDFBox(pageCount);
@@ -500,9 +453,9 @@ public class PDFRenderer implements BoxRenderer
         // transforms all data from LIST data structure to Apache PDFBox format
         // and writes it do PDF document
         writeAllElementsToPDF();
-
-        // saves current document
-        saveDocPDFBox();
+        
+        // close the content stream
+        closeContentStream();
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -2135,7 +2088,7 @@ public class PDFRenderer implements BoxRenderer
             return 1;
 
         // gets data describing the text
-        VisualContext ctx = text.getVisualContext();
+        PDFVisualContext ctx = (PDFVisualContext) text.getVisualContext();
         float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef); //TODO pt vs px
         boolean isBold = ctx.getFontInfo().isBold();
         boolean isItalic = ctx.getFontInfo().isItalic();
@@ -2145,7 +2098,8 @@ public class PDFRenderer implements BoxRenderer
 
         // if font is not in fontTable we load it
         PDFont font = null;
-        for (int iter = 0; iter < fontTable.size(); iter++)
+        font = ctx.getFont();
+        /*for (int iter = 0; iter < fontTable.size(); iter++)
         {
 
             if (fontTable.get(iter).fontName.equalsIgnoreCase(fontFamily) && fontTable.get(iter).isItalic == isItalic
@@ -2156,7 +2110,7 @@ public class PDFRenderer implements BoxRenderer
         {
             font = setFont(fontFamily, isItalic, isBold);
             fontTable.add(new FontTableRecord(fontFamily, isBold, isItalic, font));
-        }
+        }*/
 
         // font.setFontEncoding(new PdfDocEncoding()); //TODO is this useful?
         // String textToInsert = filterUnicode(text.getText());
@@ -2192,40 +2146,28 @@ public class PDFRenderer implements BoxRenderer
     /////////////////////////////////////////////////////////////////////////
 
     /**
-     * Saves the PDF document to disk using PDFBox
+     * Creates the document content stream.
      */
-    private int saveDocPDFBox()
+    private void initContentStream()
     {
         try
         {
-            content.close();
-            doc.save(pathToSave);
-            doc.close();
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
-    }
-
-    /**
-     * Creates document witch first page in it using PDFBox
-     */
-    private int createDocPDFBox()
-    {
-        try
-        {
-            doc = new PDDocument();
-            page = new PDPage(pageFormat);
-            doc.addPage(page);
             content = new PDPageContentStream(doc, page);
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            return -1;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
-        return 0;
+    }
+    
+    /**
+     * Closes the document content stream.
+     */
+    private void closeContentStream()
+    {
+        try {
+            content.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
@@ -2265,7 +2207,6 @@ public class PDFRenderer implements BoxRenderer
      */
     private int drawBgToWholePagePDFBox(Color bgColor)
     {
-
         try
         {
             content.setNonStrokingColor(toPDColor(bgColor));
@@ -2290,7 +2231,6 @@ public class PDFRenderer implements BoxRenderer
         {
             content.setLineWidth(lineWidth);
             content.setNonStrokingColor(bgColor);
-
             content.addRect(x, y, width, height);
             content.fill();
         } catch (IOException e)
