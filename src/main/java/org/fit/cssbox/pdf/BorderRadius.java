@@ -1,5 +1,5 @@
 
-package org.fit.cssbox.render;
+package org.fit.cssbox.pdf;
 
 import org.fit.cssbox.layout.CSSDecoder;
 import org.fit.cssbox.layout.ElementBox;

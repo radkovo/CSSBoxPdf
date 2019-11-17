@@ -1,5 +1,5 @@
 
-package org.fit.cssbox.render;
+package org.fit.cssbox.pdf;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;

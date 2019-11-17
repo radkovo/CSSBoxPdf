@@ -19,7 +19,7 @@
  * Improved on 3.5.2019, 12:11:15 by Nguyen Hoang Duong
  */
 
-package org.fit.cssbox.render;
+package org.fit.cssbox.pdf;
 
 import java.awt.AlphaComposite;
 import java.awt.Graphics2D;
@@ -60,6 +60,7 @@ import org.fit.cssbox.layout.ReplacedContent;
 import org.fit.cssbox.layout.ReplacedImage;
 import org.fit.cssbox.layout.TextBox;
 import org.fit.cssbox.layout.VisualContext;
+import org.fit.cssbox.render.BoxRenderer;
 
 import cz.vutbr.web.css.CSSProperty;
 import cz.vutbr.web.css.NodeData;

@@ -2,7 +2,7 @@
  * 
  */
 
-package org.fit.cssbox.render;
+package org.fit.cssbox.pdf;
 
 import java.net.URI;
 import java.util.HashMap;

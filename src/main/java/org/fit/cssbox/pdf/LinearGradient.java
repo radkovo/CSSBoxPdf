@@ -1,5 +1,5 @@
 
-package org.fit.cssbox.render;
+package org.fit.cssbox.pdf;
 
 import java.util.List;
 

@@ -19,7 +19,7 @@
  *
  * Created on 16.5.2015, 8:26:29 by Zbynek Cervinka
  */
-package org.fit.cssbox.demo;
+package org.fit.cssbox.pdf.demo;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -36,7 +36,7 @@ import org.fit.cssbox.layout.BrowserConfig;
 import org.fit.cssbox.layout.Dimension;
 import org.fit.cssbox.layout.GraphicsEngine;
 import org.fit.cssbox.layout.Viewport;
-import org.fit.cssbox.render.PDFRenderer;
+import org.fit.cssbox.pdf.PDFRenderer;
 import org.w3c.dom.Document;
 import org.xml.sax.SAXException;
 
