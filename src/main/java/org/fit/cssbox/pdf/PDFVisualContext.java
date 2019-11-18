@@ -137,7 +137,7 @@ public class PDFVisualContext extends VisualContext
     {
         try
         {
-            return font.getStringWidth(text) / 1000 * pxFontSize();
+            return font.getStringWidth(text) / 1000.0f * pxFontSize() + 0.001f; // 0.001f for some rounding issues
         } catch (Exception e) {
             return 0;
         }
