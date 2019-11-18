@@ -33,6 +33,7 @@ import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.css.FontSpec;
 import org.fit.cssbox.css.FontTable;
 import org.fit.cssbox.layout.BrowserConfig;
@@ -70,7 +71,7 @@ public class PDFVisualContext extends VisualContext
     @Override
     public VisualContext create()
     {
-        PDFVisualContext ret = new PDFVisualContext(this.doc, getParentContext(), getConfig(), getFontTable());
+        PDFVisualContext ret = new PDFVisualContext(this.doc, this, getConfig(), getFontTable());
         ret.copyVisualContext(this);
         ret.updateMetrics();
         return ret;
@@ -102,10 +103,15 @@ public class PDFVisualContext extends VisualContext
         return font;
     }
 
+    public float pxFontSize()
+    {
+        return CSSUnits.pixels(getFontSize());
+    }
+    
     @Override
     public FontInfo getFontInfo()
     {
-        return new FontInfo(font.getName(), getFontSize(), fontItalic, fontBold);
+        return new FontInfo(font.getName(), getFontSize(), fontBold, fontItalic);
     }
 
     @Override
@@ -131,7 +137,7 @@ public class PDFVisualContext extends VisualContext
     {
         try
         {
-            return font.getStringWidth(text) / 1000 * getFontSize();
+            return font.getStringWidth(text) / 1000 * pxFontSize();
         } catch (Exception e) {
             return 0;
         }
@@ -148,13 +154,13 @@ public class PDFVisualContext extends VisualContext
     @Override
     public float getFontHeight()
     {
-        return font.getFontDescriptor().getFontBoundingBox().getHeight() / 1000 * getFontSize();
+        return font.getFontDescriptor().getFontBoundingBox().getHeight() / 1000 * pxFontSize();
     }
 
     @Override
     public float getBaselineOffset()
     {
-        return font.getFontDescriptor().getAscent() / 1000 * getFontSize();
+        return font.getFontDescriptor().getAscent() / 1000 * pxFontSize();
     }
 
     @Override
@@ -244,11 +250,11 @@ public class PDFVisualContext extends VisualContext
     
     private void updateMetrics()
     {
-        ex = font.getFontDescriptor().getXHeight() / 1000 * getFontSize();
+        ex = font.getFontDescriptor().getXHeight() / 1000 * pxFontSize();
         try {
-            ch = font.getStringWidth("0") / 1000 * getFontSize();
+            ch = font.getStringWidth("0") / 1000 * pxFontSize();
         } catch (IOException e) {
-            ch = getFontSize() * 0.75f; //just a guess
+            ch = pxFontSize() * 0.75f; //just a guess
         }
     }
     
