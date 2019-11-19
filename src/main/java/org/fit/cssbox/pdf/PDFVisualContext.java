@@ -54,6 +54,7 @@ public class PDFVisualContext extends VisualContext
 {
     private PDDocument doc;
     private PDFont font;
+    private String fontFamily; //the original font family before mapping to postscript fonts
     private boolean fontItalic;
     private boolean fontBold;
     private float ex; // 1ex length in points
@@ -65,6 +66,7 @@ public class PDFVisualContext extends VisualContext
         super(parent, config, fontTable);
         this.doc = doc;
         this.font = PDType1Font.HELVETICA;
+        this.fontFamily = "Helvetica";
         updateMetrics();
     }
 
@@ -84,6 +86,7 @@ public class PDFVisualContext extends VisualContext
         if (src instanceof PDFVisualContext)
         {
             font = ((PDFVisualContext) src).font;
+            fontFamily = new String(((PDFVisualContext) src).fontFamily);
             fontItalic = ((PDFVisualContext) src).fontItalic;
             fontBold = ((PDFVisualContext) src).fontBold;
             ex = src.getEx();
@@ -111,7 +114,7 @@ public class PDFVisualContext extends VisualContext
     @Override
     public FontInfo getFontInfo()
     {
-        return new FontInfo(font.getName(), getFontSize(), fontBold, fontItalic);
+        return new FontInfo(fontFamily, getFontSize(), fontBold, fontItalic);
     }
 
     @Override
@@ -129,7 +132,7 @@ public class PDFVisualContext extends VisualContext
     @Override
     public String getFontFamily()
     {
-        return font.getName();
+        return fontFamily;
     }
 
     @Override
@@ -137,7 +140,7 @@ public class PDFVisualContext extends VisualContext
     {
         try
         {
-            return font.getStringWidth(text) / 1000.0f * pxFontSize() + 0.001f; // 0.001f for some rounding issues
+            return font.getStringWidth(text) / 1000.0f * pxFontSize() + 0.01f; // 0.01f for some rounding issues
         } catch (Exception e) {
             return 0;
         }
@@ -146,9 +149,10 @@ public class PDFVisualContext extends VisualContext
     @Override
     public void setCurrentFont(String family, float size, FontWeight weight, FontStyle style, float spacing)
     {
+        fontFamily = new String(family);
         fontItalic = (style == FontStyle.ITALIC || style == FontStyle.OBLIQUE);
         fontBold = FontSpec.representsBold(weight);
-        font = createFont(family, fontItalic, fontWeight(weight));
+        font = createFont(fontFamily, fontItalic, fontBold);
     }
 
     @Override
@@ -166,9 +170,9 @@ public class PDFVisualContext extends VisualContext
     @Override
     protected String fontAvailable(String family)
     {
-        PDFont f = createFont(family, false, 400.0f);
+        PDFont f = createFont(family, false, false);
         if (f != null)
-            return f.getName();
+            return family; //use the original family when refering to this font
         else
             return null;
     }
@@ -192,15 +196,21 @@ public class PDFVisualContext extends VisualContext
      * 
      * @return the font object
      */
-    private PDFont createFont(String fontFamily, boolean isItalic, float weight)
+    private PDFont createFont(String fontFamily, boolean isItalic, boolean isBold)
     {
+        //guess a postscript name
+        String psname = fontFamily.replace(" ", "");
+        if (isBold && isItalic) psname += ",BoldItalic";
+        else if (isBold) psname += ",Bold";
+        else if (isItalic) psname += ",Italic";
+        //font descriptor is used only for finding fallback fonts when the mapping fails
         COSDictionary dictionary = new COSDictionary();
         dictionary.setItem(COSName.TYPE, COSName.FONT_DESC);
         PDFontDescriptor desc = new PDFontDescriptor(dictionary);
         desc.setItalic(isItalic);
-        desc.setFontWeight(weight);
+        desc.setFontWeight(isBold ? 400 : 700);
         desc.setFontFamily(fontFamily);
-        FontMapping<TrueTypeFont> trueTypeFont = FontMappers.instance().getTrueTypeFont(fontFamily, desc);
+        FontMapping<TrueTypeFont> trueTypeFont = FontMappers.instance().getTrueTypeFont(psname, desc);
 
         PDFont font = null;
         if (trueTypeFont != null) {
@@ -213,47 +223,12 @@ public class PDFVisualContext extends VisualContext
         return font;
     }
     
-    private float fontWeight(FontWeight weight)
-    {
-        switch (weight)
-        {
-            case BOLD:
-                return 700;
-            case BOLDER:
-                return 600;
-            case LIGHTER:
-                return 300;
-            case NORMAL:
-                return 400;
-            case numeric_100:
-                return 100;
-            case numeric_200:
-                return 200;
-            case numeric_300:
-                return 300;
-            case numeric_400:
-                return 400;
-            case numeric_500:
-                return 500;
-            case numeric_600:
-                return 600;
-            case numeric_700:
-                return 700;
-            case numeric_800:
-                return 800;
-            case numeric_900:
-                return 900;
-            default:
-                return 400;
-        }
-    }
-    
     private void updateMetrics()
     {
         ex = font.getFontDescriptor().getXHeight() / 1000 * pxFontSize();
         try {
             ch = font.getStringWidth("0") / 1000 * pxFontSize();
-        } catch (IOException e) {
+        } catch (Exception e) {
             ch = pxFontSize() * 0.75f; //just a guess
         }
     }
