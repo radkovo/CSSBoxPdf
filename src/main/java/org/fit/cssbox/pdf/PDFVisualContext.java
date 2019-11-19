@@ -208,7 +208,7 @@ public class PDFVisualContext extends VisualContext
         dictionary.setItem(COSName.TYPE, COSName.FONT_DESC);
         PDFontDescriptor desc = new PDFontDescriptor(dictionary);
         desc.setItalic(isItalic);
-        desc.setFontWeight(isBold ? 400 : 700);
+        desc.setFontWeight(isBold ? 700 : 400);
         desc.setFontFamily(fontFamily);
         FontMapping<TrueTypeFont> trueTypeFont = FontMappers.instance().getTrueTypeFont(psname, desc);
 
