@@ -24,13 +24,10 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 
 import org.apache.fontbox.ttf.TrueTypeFont;
-import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.FontMappers;
 import org.apache.pdfbox.pdmodel.font.FontMapping;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.fit.cssbox.css.CSSUnits;
@@ -67,8 +64,8 @@ public class PDFVisualContext extends VisualContext
     {
         super(parent, config, fontTable);
         this.doc = doc;
-        this.font = PDType1Font.HELVETICA;
-        this.fontFamily = "Helvetica";
+        this.font = PDType1Font.TIMES_ROMAN;
+        this.fontFamily = "Times"; //this should be mapped to a reasonable Times font by the mapper
         if (parent == null)
             fontCache = new FontCache();
         else
@@ -172,7 +169,7 @@ public class PDFVisualContext extends VisualContext
         fontBold = FontSpec.representsBold(weight);
         letterSpacing = spacing;
         font = fontCache.get(fontFamily, fontBold, fontItalic);
-        if (font == null) //not available in the cache
+        if (font == null) //not available in the cache but available system font
         {
             font = createFont(fontFamily, fontItalic, fontBold);
             fontCache.store(fontFamily, fontBold, fontItalic, font);
@@ -194,8 +191,9 @@ public class PDFVisualContext extends VisualContext
     @Override
     protected String fontAvailable(String family)
     {
-        PDFont f = createFont(family, false, false);
-        if (f != null)
+        final String psname = getPSName(family, false, false);
+        FontMapping<TrueTypeFont> ttf = FontMappers.instance().getTrueTypeFont(psname, null);
+        if (ttf != null && !ttf.isFallback()) //fallback indicates that the font is not available
             return family; //use the original family when refering to this font
         else
             return null;
@@ -223,19 +221,8 @@ public class PDFVisualContext extends VisualContext
     private PDFont createFont(String fontFamily, boolean isItalic, boolean isBold)
     {
         //guess a postscript name
-        String psname = fontFamily.replace(" ", "");
-        if (isBold && isItalic) psname += ",BoldItalic";
-        else if (isBold) psname += ",Bold";
-        else if (isItalic) psname += ",Italic";
-        //font descriptor is used only for finding fallback fonts when the mapping fails
-        COSDictionary dictionary = new COSDictionary();
-        dictionary.setItem(COSName.TYPE, COSName.FONT_DESC);
-        PDFontDescriptor desc = new PDFontDescriptor(dictionary);
-        desc.setItalic(isItalic);
-        desc.setFontWeight(isBold ? 700 : 400);
-        desc.setFontFamily(fontFamily);
-        FontMapping<TrueTypeFont> trueTypeFont = FontMappers.instance().getTrueTypeFont(psname, desc);
-
+        final String psname = getPSName(fontFamily, isItalic, isBold);
+        FontMapping<TrueTypeFont> trueTypeFont = FontMappers.instance().getTrueTypeFont(psname, null);
         PDFont font = null;
         if (trueTypeFont != null) {
             try {
@@ -246,7 +233,49 @@ public class PDFVisualContext extends VisualContext
         }
         return font;
     }
+
+    /**
+     * Tries to guess a PostScript name from the font specification
+     * @param fontFamily
+     * @param isItalic
+     * @param isBold
+     * @return the PS name
+     */
+    protected String getPSName(String fontFamily, boolean isItalic, boolean isBold)
+    {
+        String psname = toCamelCase(fontFamily);
+        if (isBold && isItalic) psname += ",BoldItalic";
+        else if (isBold) psname += ",Bold";
+        else if (isItalic) psname += ",Italic";
+        return psname;
+    }
     
+    /**
+     * Tries to reconstruct letter case (matching is case-sensitive)
+     * @param str the family name
+     * @return a guess of the PS form of the name
+     */
+    private String toCamelCase(String str)
+    {
+        StringBuffer sb = new StringBuffer();
+        for (String s : str.split(" "))
+        {
+            if (s.length() <= 2)
+            {
+                sb.append(s.toUpperCase()); //probably something like MS
+            }
+            else
+            {
+                sb.append(Character.toUpperCase(s.charAt(0)));
+                sb.append(s.substring(1, s.length()).toLowerCase());
+            }
+        }
+        return sb.toString();
+    }
+    
+    /**
+     * Updates the ex and ch metrics.
+     */
     private void updateMetrics()
     {
         ex = font.getFontDescriptor().getXHeight() / 1000 * pxFontSize();
