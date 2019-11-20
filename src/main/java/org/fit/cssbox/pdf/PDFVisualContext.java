@@ -57,9 +57,11 @@ public class PDFVisualContext extends VisualContext
     private String fontFamily; //the original font family before mapping to postscript fonts
     private boolean fontItalic;
     private boolean fontBold;
+    private float letterSpacing;
     private float ex; // 1ex length in points
     private float ch; // 1ch length in points
-
+    private FontCache fontCache; //font cache to store already created fonts
+    
     
     public PDFVisualContext(PDDocument doc, VisualContext parent, BrowserConfig config, FontTable fontTable)
     {
@@ -67,6 +69,10 @@ public class PDFVisualContext extends VisualContext
         this.doc = doc;
         this.font = PDType1Font.HELVETICA;
         this.fontFamily = "Helvetica";
+        if (parent == null)
+            fontCache = new FontCache();
+        else
+            fontCache = ((PDFVisualContext) parent).getFontCache();
         updateMetrics();
     }
 
@@ -89,11 +95,17 @@ public class PDFVisualContext extends VisualContext
             fontFamily = new String(((PDFVisualContext) src).fontFamily);
             fontItalic = ((PDFVisualContext) src).fontItalic;
             fontBold = ((PDFVisualContext) src).fontBold;
+            letterSpacing = ((PDFVisualContext) src).letterSpacing;
             ex = src.getEx();
             ch = src.getCh();
         }
     }
     
+    public FontCache getFontCache()
+    {
+        return fontCache;
+    }
+
     @Override
     public void update(NodeData style)
     {
@@ -140,7 +152,13 @@ public class PDFVisualContext extends VisualContext
     {
         try
         {
-            return font.getStringWidth(text) / 1000.0f * pxFontSize() + 0.01f; // 0.01f for some rounding issues
+            if (text.length() > 0)
+            {
+                final float sp = (text.length() + 2) * CSSUnits.pixels(letterSpacing); //TODO more?
+                return font.getStringWidth(text) / 1000.0f * pxFontSize() + sp + 0.01f; // 0.01f for some rounding issues
+            }
+            else
+                return 0;
         } catch (Exception e) {
             return 0;
         }
@@ -152,7 +170,13 @@ public class PDFVisualContext extends VisualContext
         fontFamily = new String(family);
         fontItalic = (style == FontStyle.ITALIC || style == FontStyle.OBLIQUE);
         fontBold = FontSpec.representsBold(weight);
-        font = createFont(fontFamily, fontItalic, fontBold);
+        letterSpacing = spacing;
+        font = fontCache.get(fontFamily, fontBold, fontItalic);
+        if (font == null) //not available in the cache
+        {
+            font = createFont(fontFamily, fontItalic, fontBold);
+            fontCache.store(fontFamily, fontBold, fontItalic, font);
+        }
     }
 
     @Override
@@ -232,5 +256,5 @@ public class PDFVisualContext extends VisualContext
             ch = pxFontSize() * 0.75f; //just a guess
         }
     }
-    
+
 }

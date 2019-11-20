@@ -27,9 +27,7 @@ import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,8 +36,6 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDType0Font;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
@@ -58,7 +54,6 @@ import org.fit.cssbox.layout.ReplacedBox;
 import org.fit.cssbox.layout.ReplacedContent;
 import org.fit.cssbox.layout.ReplacedImage;
 import org.fit.cssbox.layout.TextBox;
-import org.fit.cssbox.layout.VisualContext;
 import org.fit.cssbox.render.BoxRenderer;
 
 import cz.vutbr.web.css.CSSProperty;
@@ -85,8 +80,6 @@ public class PDFRenderer implements BoxRenderer
 {
     private float resCoef, rootHeight;
 
-    private FontDB fontDB;
-
     // PDFBox variables
     private PDDocument doc = null;
     private PDPage page = null;
@@ -108,27 +101,7 @@ public class PDFRenderer implements BoxRenderer
     private List<float[]> breakTable = new ArrayList<>(2);
     private List<float[]> avoidTable = new ArrayList<>(2);
 
-    // font variables
-    private List<FontTableRecord> fontTable = new ArrayList<>(2);
-
-    private class FontTableRecord
-    {
-
-        public String fontName;
-        public Boolean isBold;
-        public Boolean isItalic;
-        public PDFont loadedFont;
-
-        FontTableRecord(String fontName, Boolean isBold, Boolean isItalic, PDFont loadedFont)
-        {
-            this.fontName = fontName;
-            this.isBold = isBold;
-            this.isItalic = isItalic;
-            this.loadedFont = loadedFont;
-        }
-    };
-
-    // other variables
+    // padding
     private float outputTopPadding;
     private float outputBottomPadding;
 
@@ -154,8 +127,6 @@ public class PDFRenderer implements BoxRenderer
         // sets the top and bottom paddings for the output page
         outputTopPadding = this.pageFormat.getHeight() / 100;
         outputBottomPadding = this.pageFormat.getHeight() / 100;
-
-        fontDB = new FontDB();
     }
 
     @Override
@@ -2089,33 +2060,14 @@ public class PDFRenderer implements BoxRenderer
 
         // gets data describing the text
         PDFVisualContext ctx = (PDFVisualContext) text.getVisualContext();
-        float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef); //TODO pt vs px
+        float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef);
         boolean isBold = ctx.getFontInfo().isBold();
-        boolean isItalic = ctx.getFontInfo().isItalic();
         boolean isUnderlined = text.getEfficientTextDecoration().contains(CSSProperty.TextDecoration.UNDERLINE);
-        String fontFamily = ctx.getFontInfo().getFamily();
+        float letterSpacing = ctx.getLetterSpacing();
         Color color = ctx.getColor();
-
-        // if font is not in fontTable we load it
-        PDFont font = null;
-        font = ctx.getFont();
-        /*for (int iter = 0; iter < fontTable.size(); iter++)
-        {
-
-            if (fontTable.get(iter).fontName.equalsIgnoreCase(fontFamily) && fontTable.get(iter).isItalic == isItalic
-                    && fontTable.get(iter).isBold == isBold)
-                font = fontTable.get(iter).loadedFont;
-        }
-        if (font == null)
-        {
-            font = setFont(fontFamily, isItalic, isBold);
-            fontTable.add(new FontTableRecord(fontFamily, isBold, isItalic, font));
-        }*/
-
-        // font.setFontEncoding(new PdfDocEncoding()); //TODO is this useful?
-        // String textToInsert = filterUnicode(text.getText());
+        PDFont font = ctx.getFont();
+        
         String textToInsert = text.getText();
-
         try
         {
             content.setNonStrokingColor(toPDColor(color));
@@ -2126,11 +2078,8 @@ public class PDFRenderer implements BoxRenderer
             float startY = (text.getAbsoluteContentY() * resCoef + plusOffset) % pageFormat.getHeight();
 
             // writes to PDF
-            writeTextPDFBox(startX, startY, textToInsert, font, fontSize, isUnderlined, isBold, leading);
-
-        } catch (Exception e)
-        {
-
+            writeTextPDFBox(startX, startY, textToInsert, font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+        } catch (Exception e) {
             e.printStackTrace();
             return -1;
         }
@@ -2267,7 +2216,7 @@ public class PDFRenderer implements BoxRenderer
      * Writes String to recent PDF page using PDFBox
      */
     private int writeTextPDFBox(float x, float y, String textToInsert, PDFont font, float fontSize,
-            boolean isUnderlined, boolean isBold, float leading)
+            boolean isUnderlined, boolean isBold, float letterSpacing, float leading)
     {
         // transform X,Y coordinates to Apache PDFBox format
         y = pageFormat.getHeight() - y - leading * resCoef;
@@ -2276,6 +2225,7 @@ public class PDFRenderer implements BoxRenderer
         {
             content.beginText();
             content.setFont(font, fontSize);
+            content.setCharacterSpacing(letterSpacing);
             content.newLineAtOffset(x, y);
             try
             {
@@ -2315,148 +2265,8 @@ public class PDFRenderer implements BoxRenderer
         return 0;
     }
 
-    /**
-     * Creates object describing font
-     * 
-     * @return the font object
-     */
-    private PDFont setFont(String fontFamily, boolean isItalic, boolean isBold)
-    {
-        PDFont font = loadTTF(fontFamily, isItalic, isBold);
-        // try some fallbacks when not found
-        if (font == null) font = tryTTFFallback(fontFamily, isItalic, isBold);
-        if (font == null) font = tryBuiltinFallback(fontFamily, isItalic, isBold);
-        return font;
-    }
-
-    private PDFont tryBuiltinFallback(String fontFamily, boolean isItalic, boolean isBold)
-    {
-        PDFont font;
-
-        fontFamily = fontFamily.toLowerCase();
-        switch (fontFamily)
-        {
-            case "courier":
-            case "courier new":
-            case "lucida console":
-                if (isBold && isItalic)
-                {
-                    font = PDType1Font.COURIER_BOLD_OBLIQUE;
-                }
-                else if (isBold)
-                {
-                    font = PDType1Font.COURIER_BOLD;
-                }
-                else if (isItalic)
-                {
-                    font = PDType1Font.COURIER_OBLIQUE;
-                }
-                else
-                {
-                    font = PDType1Font.COURIER;
-                }
-                break;
-            case "times":
-            case "garamond":
-            case "georgia":
-            case "times new roman":
-            case "serif":
-                if (isBold && isItalic)
-                {
-                    font = PDType1Font.TIMES_BOLD_ITALIC;
-                }
-                else if (isBold)
-                {
-                    font = PDType1Font.TIMES_BOLD;
-                }
-                else if (isItalic)
-                {
-                    font = PDType1Font.TIMES_ITALIC;
-                }
-                else
-                {
-                    font = PDType1Font.TIMES_ROMAN;
-                }
-                break;
-            default:
-                if (isBold && isItalic)
-                {
-                    font = PDType1Font.HELVETICA_BOLD_OBLIQUE;
-                }
-                else if (isBold)
-                {
-                    font = PDType1Font.HELVETICA_BOLD;
-                }
-                else if (isItalic)
-                {
-                    font = PDType1Font.HELVETICA_OBLIQUE;
-                }
-                else
-                {
-                    font = PDType1Font.HELVETICA;
-                }
-                break;
-        }
-        return font;
-    }
-
-    private PDFont tryTTFFallback(String fontFamily, boolean isItalic, boolean isBold)
-    {
-        fontFamily = fontFamily.toLowerCase();
-        switch (fontFamily)
-        {
-            case "courier":
-            case "courier new":
-            case "lucida console":
-            case "monotype":
-                return loadTTFAlternatives(new String[] { "freemono", "DejaVuSansMono" }, isItalic, isBold);
-            case "times":
-            case "garamond":
-            case "georgia":
-            case "times new roman":
-            case "serif":
-                return loadTTFAlternatives(new String[] { "freeserif" }, isItalic, isBold);
-            default:
-                return loadTTFAlternatives(new String[] { "freesans" }, isItalic, isBold);
-        }
-    }
-
-    /**
-     * Tries to load a font from the system database.
-     * 
-     * @param fontFamily
-     * @param isItalic
-     * @param isBold
-     * @return the font or {@code null} when not found
-     */
-    private PDFont loadTTF(String fontFamily, boolean isItalic, boolean isBold)
-    {
-        PDFont font = null;
-        try
-        {
-            URI uri = fontDB.findFontURI(fontFamily, isBold, isItalic);
-            if (uri != null) font = PDType0Font.load(doc, new File(uri));
-        } catch (IOException e)
-        {
-            font = null;
-        }
-        return font;
-    }
-
-    private PDFont loadTTFAlternatives(String[] fontFamilies, boolean isItalic, boolean isBold)
-    {
-        for (String fontFamily : fontFamilies)
-        {
-            PDFont font = loadTTF(fontFamily, isItalic, isBold);
-            if (font != null) return font;
-        }
-        return null;
-    }
-
-    /////////////////////////////////////////////////////////////////////
-    // OTHER FUNCTIONS
-    /////////////////////////////////////////////////////////////////////
-
+    //==================================================================================================
+    
     /**
      * Returns color of border
      */
