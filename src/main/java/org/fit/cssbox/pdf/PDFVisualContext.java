@@ -154,7 +154,7 @@ public class PDFVisualContext extends VisualContext
         {
             if (text.length() > 0)
             {
-                final float sp = (text.length() + 2) * CSSUnits.pixels(letterSpacing); //TODO more?
+                final float sp = text.length() * CSSUnits.pixels(letterSpacing); //width added by additional letter spacing
                 return font.getStringWidth(text) / 1000.0f * pxFontSize() + sp + 0.01f; // 0.01f for some rounding issues
             }
             else

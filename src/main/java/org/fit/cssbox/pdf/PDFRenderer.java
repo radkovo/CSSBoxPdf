@@ -2063,7 +2063,7 @@ public class PDFRenderer implements BoxRenderer
         float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef);
         boolean isBold = ctx.getFontInfo().isBold();
         boolean isUnderlined = text.getEfficientTextDecoration().contains(CSSProperty.TextDecoration.UNDERLINE);
-        float letterSpacing = ctx.getLetterSpacing();
+        float letterSpacing = CSSUnits.pixels(ctx.getLetterSpacing() * resCoef);
         Color color = ctx.getColor();
         PDFont font = ctx.getFont();
         
