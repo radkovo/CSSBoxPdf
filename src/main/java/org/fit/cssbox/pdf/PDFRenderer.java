@@ -2067,18 +2067,21 @@ public class PDFRenderer implements BoxRenderer
         Color color = ctx.getColor();
         PDFont font = ctx.getFont();
         
-        String textToInsert = text.getText();
         try
         {
             content.setNonStrokingColor(toPDColor(color));
             float leading = 2f * fontSize;
 
-            // counts the resized coordinates in CSSBox form
+            // compute the resized coordinates
             float startX = text.getAbsoluteContentX() * resCoef;
             float startY = (text.getAbsoluteContentY() * resCoef + plusOffset) % pageFormat.getHeight();
 
-            // writes to PDF
-            writeTextPDFBox(startX, startY, textToInsert, font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+            // write to PDF
+            if (text.getWordSpacing() == null && text.getExtraWidth() == 0)
+                writeTextPDFBox(startX, startY, text.getText(), font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+            else
+                writeTextByWords(startX, startY, text, font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+            
         } catch (Exception e) {
             e.printStackTrace();
             return -1;
@@ -2213,7 +2216,43 @@ public class PDFRenderer implements BoxRenderer
     }
 
     /**
-     * Writes String to recent PDF page using PDFBox
+     * Writes a text box to PDF by individual words while cosidering the word X offsets available in the text box.
+     * @param x
+     * @param y
+     * @param text
+     * @param font
+     * @param fontSize
+     * @param isUnderlined
+     * @param isBold
+     * @param letterSpacing
+     * @param leading
+     */
+    private void writeTextByWords(float x, float y, TextBox text, PDFont font, float fontSize,
+            boolean isUnderlined, boolean isBold, float letterSpacing, float leading)
+    {
+        final String[] words = text.getText().split(" ");
+        if (words.length > 0)
+        {
+            final float[][] offsets = text.getWordOffsets(words);
+            for (int i = 0; i < words.length; i++)
+                writeTextPDFBox(x + offsets[i][0] * resCoef, y, words[i], font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+        }
+        else
+            writeTextPDFBox(x, y, text.getText(), font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+    }
+    
+    /**
+     * Writes String to recent PDF page using PDFBox.
+     * @param x
+     * @param y
+     * @param textToInsert
+     * @param font
+     * @param fontSize
+     * @param isUnderlined
+     * @param isBold
+     * @param letterSpacing
+     * @param leading
+     * @return
      */
     private int writeTextPDFBox(float x, float y, String textToInsert, PDFont font, float fontSize,
             boolean isUnderlined, boolean isBold, float letterSpacing, float leading)
