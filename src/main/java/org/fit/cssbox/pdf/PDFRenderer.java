@@ -142,7 +142,36 @@ public class PDFRenderer implements BoxRenderer
     @Override
     public void renderMarker(ListItemBox elem)
     {
-        // TODO render the markers
+        // elem has no parent object - new Node will be root
+        if (elem.getParent() == null)
+        {
+            // TREE
+            rootNodeOfTree = new Node(null, null, null, null, elem, null);
+            recentNodeInTree = rootNodeOfTree;
+            // LIST
+            rootNodeOfList = new Node(null, null, null, null, elem, rootNodeOfTree);
+            recentNodeInList = rootNodeOfList;
+        }
+        // add new Node with reference to elem inside to TREE and to LIST to
+        // right place
+        else
+        {
+            // TREE
+            Node targetNode = findNodeToInsert(elem.getParent().getOrder(), elem.getOrder());
+            if (targetNode == null)
+            {
+                Node tmpNode = new Node(null, null, null, null, elem, null);
+                tmpNode.setParentIDOfNoninsertedNode(elem.getParent().getOrder());
+                nodesWithoutParent.add(tmpNode);
+            }
+            else
+            {
+                recentNodeInTree = targetNode.insertNewNode(null, null, null, elem, null);
+            }
+
+            // LIST
+            recentNodeInList = recentNodeInList.insertNewNode(null, null, null, elem, recentNodeInTree);
+        }
     }
 
     /**
@@ -157,10 +186,10 @@ public class PDFRenderer implements BoxRenderer
         if (elem.getParent() == null)
         {
             // TREE
-            rootNodeOfTree = new Node(null, elem, null, null, null);
+            rootNodeOfTree = new Node(null, elem, null, null, null, null);
             recentNodeInTree = rootNodeOfTree;
             // LIST
-            rootNodeOfList = new Node(null, elem, null, null, rootNodeOfTree);
+            rootNodeOfList = new Node(null, elem, null, null, null, rootNodeOfTree);
             recentNodeInList = rootNodeOfList;
         }
         // add new Node with reference to elem inside to TREE and to LIST to
@@ -171,17 +200,17 @@ public class PDFRenderer implements BoxRenderer
             Node targetNode = findNodeToInsert(elem.getParent().getOrder(), elem.getOrder());
             if (targetNode == null)
             {
-                Node tmpNode = new Node(null, elem, null, null, null);
+                Node tmpNode = new Node(null, elem, null, null, null, null);
                 tmpNode.setParentIDOfNoninsertedNode(elem.getParent().getOrder());
                 nodesWithoutParent.add(tmpNode);
             }
             else
             {
-                recentNodeInTree = targetNode.insertNewNode(elem, null, null, null);
+                recentNodeInTree = targetNode.insertNewNode(elem, null, null, null, null);
             }
 
             // LIST
-            recentNodeInList = recentNodeInList.insertNewNode(elem, null, null, recentNodeInTree);
+            recentNodeInList = recentNodeInList.insertNewNode(elem, null, null, null, recentNodeInTree);
         }
     }
 
@@ -195,9 +224,9 @@ public class PDFRenderer implements BoxRenderer
         // elem has no parent object - new Node will be root
         if (text.getParent() == null)
         {
-            rootNodeOfTree = new Node(null, null, text, null, null);
+            rootNodeOfTree = new Node(null, null, text, null, null, null);
             recentNodeInTree = rootNodeOfTree;
-            rootNodeOfList = new Node(null, null, text, null, rootNodeOfTree);
+            rootNodeOfList = new Node(null, null, text, null, null, rootNodeOfTree);
             recentNodeInList = rootNodeOfList;
         }
         // add new Node with reference to elem inside to TREE and to LIST to
@@ -208,16 +237,16 @@ public class PDFRenderer implements BoxRenderer
             Node targetNode = findNodeToInsert(text.getParent().getOrder(), text.getOrder());
             if (targetNode == null)
             {
-                Node tmpNode = new Node(null, null, text, null, null);
+                Node tmpNode = new Node(null, null, text, null, null, null);
                 tmpNode.setParentIDOfNoninsertedNode(text.getParent().getOrder());
                 nodesWithoutParent.add(tmpNode);
             }
             else
             {
-                recentNodeInTree = targetNode.insertNewNode(null, text, null, null);
+                recentNodeInTree = targetNode.insertNewNode(null, text, null, null, null);
             }
             // LIST
-            recentNodeInList = recentNodeInList.insertNewNode(null, text, null, recentNodeInTree);
+            recentNodeInList = recentNodeInList.insertNewNode(null, text, null, null, recentNodeInTree);
         }
     }
 
@@ -233,9 +262,9 @@ public class PDFRenderer implements BoxRenderer
         // elem has no parent object - new Node will be root
         if (convertedBox.getParent() == null)
         {
-            rootNodeOfTree = new Node(null, null, null, box, null);
+            rootNodeOfTree = new Node(null, null, null, box, null, null);
             recentNodeInTree = rootNodeOfTree;
-            rootNodeOfList = new Node(null, null, null, box, rootNodeOfTree);
+            rootNodeOfList = new Node(null, null, null, box, null, rootNodeOfTree);
             recentNodeInList = rootNodeOfList;
         }
         // add new Node with reference to elem inside to TREE and to LIST to
@@ -247,17 +276,17 @@ public class PDFRenderer implements BoxRenderer
 
             if (targetNode == null)
             {
-                Node tmpNode = new Node(null, null, null, box, null);
+                Node tmpNode = new Node(null, null, null, box, null, null);
                 tmpNode.setParentIDOfNoninsertedNode(convertedBox.getParent().getOrder());
                 nodesWithoutParent.add(tmpNode);
             }
             else
             {
-                recentNodeInTree = targetNode.insertNewNode(null, null, box, null);
+                recentNodeInTree = targetNode.insertNewNode(null, null, box, null, null);
             }
 
             // LIST
-            recentNodeInList = recentNodeInList.insertNewNode(null, null, box, recentNodeInTree);
+            recentNodeInList = recentNodeInList.insertNewNode(null, null, box, null, recentNodeInTree);
         }
     }
 
@@ -1290,6 +1319,12 @@ public class PDFRenderer implements BoxRenderer
                     insertImg(box, i, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight(),
                             pdfFilter, isBorderRad, borRad);
                 }
+                
+                // inserts list markers
+                if (currentNode.isItem())
+                {
+                    insertMarker(currentNode.getItem(), i, currentNode.getTreeEq().getPlusOffset(), currentNode.getTreeEq().getPlusHeight());
+                }
             }
         }
         return 0;
@@ -2070,7 +2105,7 @@ public class PDFRenderer implements BoxRenderer
         try
         {
             content.setNonStrokingColor(toPDColor(color));
-            float leading = 2f * fontSize;
+            final float leading = 2f * fontSize;
 
             // compute the resized coordinates
             float startX = text.getAbsoluteContentX() * resCoef;
@@ -2089,6 +2124,34 @@ public class PDFRenderer implements BoxRenderer
         return 0;
     }
 
+    private int insertMarker(ListItemBox item, int i, float plusOffset, float plusHeight)
+    {
+        // counts the distance between top of the document and the start/end of
+        // the page
+        float pageStart = i * pageFormat.getHeight();
+        float pageEnd = (i + 1) * pageFormat.getHeight();
+
+        // checks if the whole text is out of the page
+        if (item.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
+                || (item.getAbsoluteContentY() + item.getHeight()) * resCoef + plusOffset < pageStart)
+            return 1;
+
+        PDFVisualContext ctx = (PDFVisualContext) item.getVisualContext();
+        final float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef);
+        final float leading = 2f * fontSize;
+        
+        try
+        {
+            // write to PDF
+            writeBullet(item, plusOffset, leading);
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            return -1;
+        }
+        return 0;
+    }
+    
     /////////////////////////////////////////////////////////////////////////
     // USES APACHE PDFBOX FUNCTIONS TO CREATE PDF DOCUMENT
     //
@@ -2193,6 +2256,34 @@ public class PDFRenderer implements BoxRenderer
         return 0;
     }
 
+    private void drawCirclePDFBox(float lineWidth, PDColor color, float cx, float cy, float r, boolean fill) 
+    {
+        try
+        {
+            final float k = 0.552284749831f;
+            if (fill)
+            {
+                content.setNonStrokingColor(color);
+            }
+            else
+            {
+                content.setLineWidth(lineWidth);
+                content.setStrokingColor(color);
+            }
+            content.moveTo(cx - r, cy);
+            content.curveTo(cx - r, cy + k * r, cx - k * r, cy + r, cx, cy + r);
+            content.curveTo(cx + k * r, cy + r, cx + r, cy + k * r, cx + r, cy);
+            content.curveTo(cx + r, cy - k * r, cx + k * r, cy - r, cx, cy - r);
+            content.curveTo(cx - k * r, cy - r, cx - r, cy - k * r, cx - r, cy);
+            if (fill)
+                content.fill();
+            else
+                content.stroke();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }    
+    
     /**
      * Inserts image to recent PDF page using PDFBox
      */
@@ -2215,6 +2306,43 @@ public class PDFRenderer implements BoxRenderer
         return 0;
     }
 
+    private void writeBullet(ListItemBox lb, float plusOffset, float leading)
+    {
+        if (lb.hasVisibleBullet())
+        {
+            PDFVisualContext ctx = (PDFVisualContext) lb.getVisualContext();
+            float x = (lb.getAbsoluteContentX() - 1.2f * ctx.getEm()) * resCoef;
+            float y = ((lb.getAbsoluteContentY() - 0.5f * ctx.getEm()) * resCoef + plusOffset) % pageFormat.getHeight();
+            y = pageFormat.getHeight() - y - leading * resCoef;
+            float r = (0.4f * ctx.getEm()) * resCoef;
+            PDColor color = toPDColor(ctx.getColor());
+
+            switch (lb.getListStyleType())
+            {
+                case "circle":
+                    drawCirclePDFBox(1.0f * resCoef, color, x + r / 2, y - r / 2, r / 2, false);
+                    break;
+                case "square":
+                    drawRectanglePDFBox(1, color, x, y - r, r, r);
+                    break;
+                case "disc":
+                    drawCirclePDFBox(1.0f * resCoef, color, x + r / 2, y - r / 2, r / 2, true);
+                    break;
+                default:
+                    float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef);
+                    boolean isBold = ctx.getFontInfo().isBold();
+                    float letterSpacing = CSSUnits.pixels(ctx.getLetterSpacing() * resCoef);
+                    PDFont font = ctx.getFont();
+                    float xofs = ctx.stringWidth(lb.getMarkerText());
+                    float tx = (lb.getAbsoluteContentX() - xofs) * resCoef;
+                    float yofs = lb.getFirstInlineBoxBaseline() - ctx.getBaselineOffset(); //to align the font baseline with the item box baseline
+                    float ty = ((lb.getAbsoluteContentY() + yofs) * resCoef + plusOffset) % pageFormat.getHeight();
+                    writeTextPDFBox(tx, ty, lb.getMarkerText(), font, fontSize, false, isBold, letterSpacing, leading);
+                    break;
+            }
+        }
+    }
+    
     /**
      * Writes a text box to PDF by individual words while cosidering the word X offsets available in the text box.
      * @param x

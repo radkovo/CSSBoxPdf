@@ -9,6 +9,7 @@ package org.fit.cssbox.pdf;
 import java.util.Vector;
 
 import org.fit.cssbox.layout.ElementBox;
+import org.fit.cssbox.layout.ListItemBox;
 import org.fit.cssbox.layout.Rectangle;
 import org.fit.cssbox.layout.ReplacedBox;
 import org.fit.cssbox.layout.TextBox;
@@ -22,6 +23,7 @@ public class Node
     private ElementBox elem;
     private TextBox text;
     private ReplacedBox box;
+    private ListItemBox item;
 
     private float plusHeight, plusOffset;
 
@@ -31,13 +33,14 @@ public class Node
     /**
      * Constructor
      */
-    public Node(Node nodeParent, ElementBox elem, TextBox text, ReplacedBox box, Node refToTreeEquivalent)
+    public Node(Node nodeParent, ElementBox elem, TextBox text, ReplacedBox box, ListItemBox item, Node refToTreeEquivalent)
     {
 
         this.nodeParent = nodeParent;
         this.elem = elem;
         this.text = text;
         this.box = box;
+        this.item = item;
         this.plusHeight = 0;
         this.plusOffset = 0;
         this.refToTreeEquivalent = refToTreeEquivalent;
@@ -94,7 +97,7 @@ public class Node
     /**
      * Insert new Node to right place in the children Vector
      */
-    public Node insertNewNode(ElementBox elem, TextBox text, ReplacedBox box, Node refToTreeEquivalent)
+    public Node insertNewNode(ElementBox elem, TextBox text, ReplacedBox box, ListItemBox item, Node refToTreeEquivalent)
     {
 
         // gets the distance of new element from the top of the page
@@ -113,7 +116,11 @@ public class Node
             Rectangle cb = ((Box) box).getAbsoluteContentBounds();
             y = cb.y;
         }
-        Node newNode = new Node(this, elem, text, box, refToTreeEquivalent);
+        else if (item != null)
+        {
+            y = item.getAbsoluteContentY();
+        }
+        Node newNode = new Node(this, elem, text, box, item, refToTreeEquivalent);
 
         // goes through child node and inserts new node to right place
         for (int x = 0; x < nodeChildren.size(); x++)
@@ -274,10 +281,7 @@ public class Node
      */
     public boolean isElem()
     {
-        if (this.elem != null)
-            return true;
-        else
-            return false;
+        return (this.elem != null);
     }
 
     /**
@@ -285,10 +289,7 @@ public class Node
      */
     public boolean isText()
     {
-        if (this.text != null)
-            return true;
-        else
-            return false;
+        return (this.text != null);
     }
 
     /**
@@ -296,10 +297,15 @@ public class Node
      */
     public boolean isBox()
     {
-        if (this.box != null)
-            return true;
-        else
-            return false;
+        return (this.box != null);
+    }
+
+    /**
+     * Returns true if this object stores BOX
+     */
+    public boolean isItem()
+    {
+        return (this.item != null);
     }
 
     /**
@@ -324,6 +330,14 @@ public class Node
     public ReplacedBox getBox()
     {
         return this.box;
+    }
+
+    /**
+     * Returns the LIST ITEM stored in this object
+     */
+    public ListItemBox getItem()
+    {
+        return this.item;
     }
 
     /////////////////////////////////////////////////////////////////////
