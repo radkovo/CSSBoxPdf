@@ -189,9 +189,9 @@ public class PDFVisualContext extends VisualContext
     }
 
     @Override
-    protected String fontAvailable(String family)
+    protected String fontAvailable(String family, boolean isBold, boolean isItalic)
     {
-        final String psname = getPSName(family, false, false);
+        final String psname = getPSName(family, isBold, isItalic);
         FontMapping<TrueTypeFont> ttf = FontMappers.instance().getTrueTypeFont(psname, null);
         if (ttf != null && !ttf.isFallback()) //fallback indicates that the font is not available
             return family; //use the original family when refering to this font
