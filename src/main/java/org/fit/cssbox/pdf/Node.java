@@ -95,53 +95,19 @@ public class Node
     }
 
     /**
-     * Insert new Node to right place in the children Vector
+     * Inserts a new Node to right place in the children Vector
      */
     public Node insertNewNode(ElementBox elem, TextBox text, ReplacedBox box, ListItemBox item, Node refToTreeEquivalent)
     {
-
-        // gets the distance of new element from the top of the page
-        float y = 0;
-
-        if (elem != null)
-        {
-            y = elem.getAbsoluteContentY();
-        }
-        else if (text != null)
-        {
-            y = text.getAbsoluteContentY();
-        }
-        else if (box != null)
-        {
-            Rectangle cb = ((Box) box).getAbsoluteContentBounds();
-            y = cb.y;
-        }
-        else if (item != null)
-        {
-            y = item.getAbsoluteContentY();
-        }
-        Node newNode = new Node(this, elem, text, box, item, refToTreeEquivalent);
-
-        // goes through child node and inserts new node to right place
-        for (int x = 0; x < nodeChildren.size(); x++)
-        {
-
-            if (nodeChildren.elementAt(x).getElemY() > y)
-            {
-                nodeChildren.add(x, newNode);
-                return newNode;
-            }
-        }
-        nodeChildren.add(newNode);
-        return newNode;
+        final Node newNode = new Node(this, elem, text, box, item, refToTreeEquivalent);
+        return insertNewNode(newNode);
     }
 
     /**
-     * Insert new Node to right place in the children Vector
+     * Inserts a new Node to right place in the children Vector
      */
     public Node insertNewNode(Node newChild)
     {
-
         if (newChild == null) return null;
 
         // gets the distance of new element from the top of the page
@@ -189,7 +155,7 @@ public class Node
     /////////////////////////////////////////////////////////////////////
 
     /**
-     * Returns the distance of stored ELEM/TEXT/BOX from top of the page
+     * Returns the distance of stored ELEM/TEXT/BOX/ITEM from top of the page
      */
     public float getElemY()
     {
@@ -207,11 +173,15 @@ public class Node
             Rectangle cb = ((Box) box).getAbsoluteContentBounds();
             return cb.y;
         }
+        else if (this.item != null)
+        {
+            return item.getAbsoluteContentY();
+        }
         return -1;
     }
 
     /**
-     * Returns the distance of stored ELEM/TEXT/BOX from left side of the page
+     * Returns the distance of stored ELEM/TEXT/BOX/ITEM from left side of the page
      */
     public float getElemX()
     {
@@ -228,6 +198,10 @@ public class Node
         {
             Rectangle cb = ((Box) box).getAbsoluteContentBounds();
             return cb.x;
+        }
+        else if (this.item != null)
+        {
+            return item.getAbsoluteContentX();
         }
         return -1;
     }
@@ -375,4 +349,19 @@ public class Node
     {
         return this.plusHeight;
     }
+
+    @Override
+    public String toString()
+    {
+        String type;
+        String info;
+        if (isBox()) { type = "box"; info = getBox().toString(); }
+        else if (isText()) { type = "text"; info = getText().toString(); }
+        else if (isElem()) { type = "elem"; info = getElem().toString(); }
+        else if (isItem()) { type = "item"; info = getItem().toString(); }
+        else { type = "?"; info = ""; }
+        
+        return type + " [" + info + "]"; 
+    }
+    
 }
