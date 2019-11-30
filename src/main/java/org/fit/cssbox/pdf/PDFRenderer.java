@@ -41,6 +41,7 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
+import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.util.Matrix;
 import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.layout.BackgroundImage;
@@ -1914,8 +1915,8 @@ public class PDFRenderer implements BoxRenderer
         {
             float bezier = 0.551915024494f;
             content.setLineWidth(1);
-            content.setNonStrokingColor(toPDColor(elem.getBgcolor()));
-            content.setStrokingColor(toPDColor(elem.getBgcolor()));
+            setNonStrokingColor(elem.getBgcolor());
+            setStrokingColor(elem.getBgcolor());
             // drawing inside border
             content.moveTo(ax, ay - bTopSize);
             content.curveTo1((ax + bx) / 2, (ay + bTopSize + by - bTopSize) / 2, bx, by - bTopSize);
@@ -1966,7 +1967,7 @@ public class PDFRenderer implements BoxRenderer
             if (bTopSize != 0)
             { // drawing top border
                 content.setLineWidth(bTopSize);
-                content.setStrokingColor(getBorderColor(elem, "top"));
+                setStrokingColor(getBorderColor(elem, "top"));
                 content.moveTo(ax, ay);
                 content.curveTo1((ax + bx) / 2, (ay + by) / 2, bx, by);
                 content.curveTo(bx + bezier * borRad.topRightX, by, cx, cy + bezier * borRad.topRightY, cx, cy);
@@ -1975,7 +1976,7 @@ public class PDFRenderer implements BoxRenderer
             if (bRightSize != 0)
             { // drawing right border
                 content.setLineWidth(bRightSize);
-                content.setStrokingColor(getBorderColor(elem, "right"));
+                setStrokingColor(getBorderColor(elem, "right"));
                 content.moveTo(cx, cy);
                 content.curveTo1((cx + dx) / 2, (cy + dy) / 2, dx, dy);
                 content.curveTo(dx, dy - bezier * borRad.botRightY, ex + bezier * borRad.botRightX, ey, ex, ey);
@@ -1984,7 +1985,7 @@ public class PDFRenderer implements BoxRenderer
             if (bBotSize != 0)
             { // drawing bot border
                 content.setLineWidth(bBotSize);
-                content.setStrokingColor(getBorderColor(elem, "bottom"));
+                setStrokingColor(getBorderColor(elem, "bottom"));
                 content.moveTo(ex, ey);
                 content.curveTo1((ex + fx) / 2, (ey + fy) / 2, fx, fy);
                 content.curveTo(fx - bezier * borRad.botLeftX, fy, gx, gy - bezier * borRad.botLeftY, gx, gy);
@@ -1993,7 +1994,7 @@ public class PDFRenderer implements BoxRenderer
             if (bLeftSize != 0)
             { // drawing left border
                 content.setLineWidth(bLeftSize);
-                content.setStrokingColor(getBorderColor(elem, "left"));
+                setStrokingColor(getBorderColor(elem, "left"));
                 content.moveTo(gx, gy);
                 content.curveTo1((gx + hx) / 2, (gy + hy) / 2, hx, hy);
                 content.curveTo(hx, hy + bezier * borRad.topLeftY, ax - bezier * borRad.topLeftX, ay, ax, ay);
@@ -2062,7 +2063,7 @@ public class PDFRenderer implements BoxRenderer
             }
             else
             {
-                drawRectanglePDFBox(0, toPDColor(elem.getBgcolor()), border_x, border_y,
+                drawRectanglePDFBox(0, elem.getBgcolor(), border_x, border_y,
                         (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
                         elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight);
             }
@@ -2104,7 +2105,7 @@ public class PDFRenderer implements BoxRenderer
         
         try
         {
-            content.setNonStrokingColor(toPDColor(color));
+            setNonStrokingColor(color);
             final float leading = 2f * fontSize;
 
             // compute the resized coordinates
@@ -2224,7 +2225,7 @@ public class PDFRenderer implements BoxRenderer
     {
         try
         {
-            content.setNonStrokingColor(toPDColor(bgColor));
+            setNonStrokingColor(bgColor);
             content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
             content.fill();
         } catch (IOException e)
@@ -2238,14 +2239,14 @@ public class PDFRenderer implements BoxRenderer
     /**
      * Inserts rectangle to recent PDF page using PDFBox
      */
-    private int drawRectanglePDFBox(float lineWidth, PDColor bgColor, float x, float y, float width, float height)
+    private int drawRectanglePDFBox(float lineWidth, Color bgColor, float x, float y, float width, float height)
     {
         if (bgColor == null)
             return 1;
         try
         {
             content.setLineWidth(lineWidth);
-            content.setNonStrokingColor(bgColor);
+            setNonStrokingColor(bgColor);
             content.addRect(x, y, width, height);
             content.fill();
         } catch (IOException e)
@@ -2256,19 +2257,19 @@ public class PDFRenderer implements BoxRenderer
         return 0;
     }
 
-    private void drawCirclePDFBox(float lineWidth, PDColor color, float cx, float cy, float r, boolean fill) 
+    private void drawCirclePDFBox(float lineWidth, Color color, float cx, float cy, float r, boolean fill) 
     {
         try
         {
             final float k = 0.552284749831f;
             if (fill)
             {
-                content.setNonStrokingColor(color);
+                setNonStrokingColor(color);
             }
             else
             {
                 content.setLineWidth(lineWidth);
-                content.setStrokingColor(color);
+                setStrokingColor(color);
             }
             content.moveTo(cx - r, cy);
             content.curveTo(cx - r, cy + k * r, cx - k * r, cy + r, cx, cy + r);
@@ -2315,7 +2316,7 @@ public class PDFRenderer implements BoxRenderer
             float y = ((lb.getAbsoluteContentY() - 0.5f * ctx.getEm()) * resCoef + plusOffset) % pageFormat.getHeight();
             y = pageFormat.getHeight() - y - leading * resCoef;
             float r = (0.4f * ctx.getEm()) * resCoef;
-            PDColor color = toPDColor(ctx.getColor());
+            final Color color = ctx.getColor();
 
             switch (lb.getListStyleType())
             {
@@ -2432,12 +2433,38 @@ public class PDFRenderer implements BoxRenderer
         return 0;
     }
 
+    /**
+     * Sets the stroking color for the content stream including the alpha channel.
+     * @param color a CSS color to set
+     * @throws IOException
+     */
+    private void setStrokingColor(Color color) throws IOException
+    {
+        content.setStrokingColor(toPDColor(color));
+        PDExtendedGraphicsState graphicsState = new PDExtendedGraphicsState();
+        graphicsState.setStrokingAlphaConstant(color.getAlpha() / 255.0f);
+        content.setGraphicsStateParameters(graphicsState);
+    }
+    
+    /**
+     * Sets the non-stroking color for the content stream including the alpha channel.
+     * @param color a CSS color to set
+     * @throws IOException
+     */
+    private void setNonStrokingColor(Color color) throws IOException
+    {
+        content.setNonStrokingColor(toPDColor(color));
+        PDExtendedGraphicsState graphicsState = new PDExtendedGraphicsState();
+        graphicsState.setNonStrokingAlphaConstant(color.getAlpha() / 255.0f);
+        content.setGraphicsStateParameters(graphicsState);
+    }
+    
     //==================================================================================================
     
     /**
      * Returns color of border
      */
-    private PDColor getBorderColor(ElementBox elem, String side)
+    private Color getBorderColor(ElementBox elem, String side)
     {
         Color clr = null;
         // gets the color value from CSS property
@@ -2464,7 +2491,7 @@ public class PDFRenderer implements BoxRenderer
         }
         if (clr == null)
             clr = new Color(255, 255, 255);
-        return toPDColor(clr);
+        return clr;
     }
 
     private PDColor toPDColor(Color color)
