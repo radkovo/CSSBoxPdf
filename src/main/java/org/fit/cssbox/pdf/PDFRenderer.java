@@ -17,6 +17,7 @@
  *
  * Created on 10.5.2015, 22:29:10 by Zbynek Cervinka
  * Improved on 3.5.2019, 12:11:15 by Nguyen Hoang Duong
+ * Reworked by Radek Burget
  */
 
 package org.fit.cssbox.pdf;
@@ -293,9 +294,10 @@ public class PDFRenderer implements BoxRenderer
 
     /**
      * Processing the LIST and TREE data structures and writes data to OUTPUT
+     * @throws IOException 
      */
     @Override
-    public void close()
+    public void close() throws IOException
     {
         // FINISH STEP B - process the nodesWithoutParent table and insert nodes
         // to TREE, if possible
@@ -442,8 +444,9 @@ public class PDFRenderer implements BoxRenderer
      * STEP E - transforms all data from LIST data structure to Apache PDFBox
      * format and using Apache PDFBox functions creates PDF document containing
      * transformed data
+     * @throws IOException 
      */
-    private void makePDF()
+    private void makePDF() throws IOException
     {
         // creates PDF document with first blank page
         initContentStream();
@@ -1096,8 +1099,9 @@ public class PDFRenderer implements BoxRenderer
 
     /**
      * Writing elements and their CSS property to pages in PDF
+     * @throws IOException 
      */
-    private int writeAllElementsToPDF()
+    private void writeAllElementsToPDF() throws IOException
     {
         // goes through all pages in PDF and inserts to all elements to current page
         Filter pdfFilter = new Filter(null, 0, 0, 1.0f, 1.0f);
@@ -1132,15 +1136,7 @@ public class PDFRenderer implements BoxRenderer
                     else
                     {
                         if (transf)
-                        {
-                            try
-                            {
-                                content.restoreGraphicsState();
-                            } catch (IOException e)
-                            {
-                                e.printStackTrace();
-                            }
-                        }
+                            content.restoreGraphicsState();
                         transf = false;
                     }
 
@@ -1328,7 +1324,6 @@ public class PDFRenderer implements BoxRenderer
                 }
             }
         }
-        return 0;
     }
 
     /**
@@ -1395,27 +1390,21 @@ public class PDFRenderer implements BoxRenderer
      *            height of the element
      * @param matrix
      *            matrix for the transformation from circle to eclipse gradient
+     * @throws IOException 
      */
-    private int drawBgGrad(float lineWidth, PDShadingType3 shading, float x, float y, float width, float height,
-            Matrix matrix)
+    private void drawBgGrad(float lineWidth, PDShadingType3 shading, float x, float y, float width, float height,
+            Matrix matrix) throws IOException
     {
         if (shading == null)
-            return 1;
-        try
-        {
-            content.saveGraphicsState();
-            content.setLineWidth(lineWidth);
-            content.addRect(x, y, width, height);
-            content.clip();
-            content.transform(matrix);
-            content.shadingFill(shading);
-            content.fill();
-            content.restoreGraphicsState();
-        } catch (IOException e) {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
+            return;
+        content.saveGraphicsState();
+        content.setLineWidth(lineWidth);
+        content.addRect(x, y, width, height);
+        content.clip();
+        content.transform(matrix);
+        content.shadingFill(shading);
+        content.fill();
+        content.restoreGraphicsState();
     }
 
     /**
@@ -1463,8 +1452,9 @@ public class PDFRenderer implements BoxRenderer
      * @returns {@code true} for some transformation inserted OK, {@code false}
      *          for no transformation found
      * @author Hoang Duong Nguyen
+     * @throws IOException 
      */
-    private boolean insertTransform(Node recentNode, ElementBox elem, int i, boolean transf)
+    private boolean insertTransform(Node recentNode, ElementBox elem, int i, boolean transf) throws IOException
     {
         if (elem.isBlock() || elem.isReplaced())
         {
@@ -1561,17 +1551,8 @@ public class PDFRenderer implements BoxRenderer
                                 bounds.width);
                         float ty = dec.getLength(((TermFunction.Translate) term).getTranslateY(), false, 0, 0,
                                 bounds.height);
-                        ret.translate(tx * resCoef, -ty * resCoef); // - because
-                                                                    // of the
-                                                                    // different
-                                                                    // coordinate
-                                                                    // system in
-                                                                    // PDF; *
-                                                                    // rescoef
-                                                                    // becaouse
-                                                                    // fo the
-                                                                    // page
-                                                                    // ratio
+                        ret.translate(tx * resCoef, -ty * resCoef); // - because of the different coordinate system in
+                                                                    // PDF; * rescoef because of the page ratio
                         transformed = true;
                     }
                     else if (term instanceof TermFunction.TranslateX)
@@ -1592,13 +1573,9 @@ public class PDFRenderer implements BoxRenderer
 
                 if (transformed)
                 {
-                    try
-                    {
-                        if (transf) content.restoreGraphicsState();
-                        content.saveGraphicsState();
-                    } catch (IOException e)
-                    {
-                    }
+                    if (transf)
+                        content.restoreGraphicsState();
+                    content.saveGraphicsState();
                     drawTransformPDF(ret, ox, oy);
                     return true;
                 }
@@ -1627,28 +1604,22 @@ public class PDFRenderer implements BoxRenderer
      *            flag, which determines if the transform is set for the element
      * @param type
      *            type of the transform property
+     * @throws IOException 
      */
-    private int drawTransformPDF(AffineTransform aff, float ox, float oy)
+    private void drawTransformPDF(AffineTransform aff, float ox, float oy) throws IOException
     {
-        try
-        {
-            Matrix matrix = new Matrix(aff);
-            content.transform(Matrix.getTranslateInstance(ox, oy));
-            content.transform(matrix);
-            content.transform(Matrix.getTranslateInstance(-ox, -oy));
-        } catch (IOException e)
-        {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
+        Matrix matrix = new Matrix(aff);
+        content.transform(Matrix.getTranslateInstance(ox, oy));
+        content.transform(matrix);
+        content.transform(Matrix.getTranslateInstance(-ox, -oy));
     }
 
     /**
      * Draws image gained from <img> tag to OUTPUT
+     * @throws IOException 
      */
     private void insertImg(ReplacedBox box, int i, float plusOffset, float plusHeight, Filter filter,
-            boolean isBorderRad, BorderRadius borRad)
+            boolean isBorderRad, BorderRadius borRad) throws IOException
     {
         ReplacedContent cont = box.getContentObj();
         if (cont != null)
@@ -1686,9 +1657,10 @@ public class PDFRenderer implements BoxRenderer
 
     /**
      * Draws element background image to OUTPUT
+     * @throws IOException 
      */
     private void insertBgImg(ElementBox elem, int i, float plusOffset, float plusHeight, Filter filter,
-            boolean isBorderRad, BorderRadius borRad)
+            boolean isBorderRad, BorderRadius borRad) throws IOException
     {
         for (BackgroundImage bimg : elem.getBackgroundImages())
         {
@@ -1727,12 +1699,13 @@ public class PDFRenderer implements BoxRenderer
 
     /**
      * Draws border to OUTPUT
+     * @throws IOException 
      * 
      * @returns 0 for inserted OK, -1 for exception occurs and 1 for border out
      *          of page
      */
-    private int drawBorder(ElementBox elem, int i, float plusOffset, float plusHeight, boolean isBorderRad,
-            BorderRadius borRad)
+    private void drawBorder(ElementBox elem, int i, float plusOffset, float plusHeight, boolean isBorderRad,
+            BorderRadius borRad) throws IOException
     {
         final LengthSet border = elem.getBorder();
         if (border.top > 0 || border.right > 0 || border.bottom > 0 || border.right > 0 || isBorderRad)
@@ -1746,7 +1719,7 @@ public class PDFRenderer implements BoxRenderer
             if (elem.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
                     || (elem.getAbsoluteContentY() + plusOffset + elem.getContentHeight()) * resCoef + plusHeight
                             + plusOffset < pageStart)
-                return 1;
+                return;
 
             // calculates resized X,Y coordinates in CSSBox form
             final float border_x = elem.getAbsoluteContentX() * resCoef;
@@ -1801,57 +1774,47 @@ public class PDFRenderer implements BoxRenderer
             }
             else
             {
-                try
+                // left border
+                if (borderLeftSize > 0)
                 {
-                    // left border
-                    if (borderLeftSize > 0)
-                    {
-                        bX = border_x - borderLeftSize - paddingLeft;
-                        bY = border_y - borderBottomSize - paddingBottom;
-                        bWidth = borderLeftSize;
-                        bHeight = elemHeight + borderTopSize + borderBottomSize + paddingTop + paddingBottom;
-                        drawRectanglePDFBox(borderLeftSize, getBorderColor(elem, "left"), bX, bY, bWidth, bHeight);
-                    }
+                    bX = border_x - borderLeftSize - paddingLeft;
+                    bY = border_y - borderBottomSize - paddingBottom;
+                    bWidth = borderLeftSize;
+                    bHeight = elemHeight + borderTopSize + borderBottomSize + paddingTop + paddingBottom;
+                    drawRectanglePDFBox(borderLeftSize, getBorderColor(elem, "left"), bX, bY, bWidth, bHeight);
+                }
 
-                    // right border
-                    if (borderRightSize > 0)
-                    {
-                        bX = border_x + elemWidth + paddingRight;
-                        bY = border_y - borderBottomSize - paddingBottom;
-                        bWidth = borderRightSize;
-                        bHeight = elemHeight + borderTopSize + borderBottomSize + paddingTop + paddingBottom;
-                        drawRectanglePDFBox(borderRightSize, getBorderColor(elem, "right"), bX, bY, bWidth, bHeight);
-                    }
-
-                    // top border
-                    if (borderTopSize > 0)
-                    {
-                        bX = border_x - borderLeftSize - paddingLeft;
-                        bY = border_y + elemHeight + paddingTop;
-                        bWidth = elemWidth + borderLeftSize + borderRightSize + paddingLeft + paddingRight;
-                        bHeight = borderTopSize;
-                        drawRectanglePDFBox(borderTopSize, getBorderColor(elem, "top"), bX, bY, bWidth, bHeight);
-                    }
-
-                    // bottom border
-                    if (borderBottomSize > 0)
-                    {
-                        bX = border_x - borderLeftSize - paddingLeft;
-                        bY = border_y - borderBottomSize - paddingBottom;
-                        bWidth = elemWidth + borderLeftSize + borderRightSize + paddingLeft + paddingRight;
-                        bHeight = borderBottomSize;
-                        drawRectanglePDFBox(borderBottomSize, getBorderColor(elem, "bottom"), bX, bY, bWidth, bHeight);
-                    }
-
-                } catch (Exception e)
+                // right border
+                if (borderRightSize > 0)
                 {
+                    bX = border_x + elemWidth + paddingRight;
+                    bY = border_y - borderBottomSize - paddingBottom;
+                    bWidth = borderRightSize;
+                    bHeight = elemHeight + borderTopSize + borderBottomSize + paddingTop + paddingBottom;
+                    drawRectanglePDFBox(borderRightSize, getBorderColor(elem, "right"), bX, bY, bWidth, bHeight);
+                }
 
-                    e.printStackTrace();
-                    return -1;
+                // top border
+                if (borderTopSize > 0)
+                {
+                    bX = border_x - borderLeftSize - paddingLeft;
+                    bY = border_y + elemHeight + paddingTop;
+                    bWidth = elemWidth + borderLeftSize + borderRightSize + paddingLeft + paddingRight;
+                    bHeight = borderTopSize;
+                    drawRectanglePDFBox(borderTopSize, getBorderColor(elem, "top"), bX, bY, bWidth, bHeight);
+                }
+
+                // bottom border
+                if (borderBottomSize > 0)
+                {
+                    bX = border_x - borderLeftSize - paddingLeft;
+                    bY = border_y - borderBottomSize - paddingBottom;
+                    bWidth = elemWidth + borderLeftSize + borderRightSize + paddingLeft + paddingRight;
+                    bHeight = borderBottomSize;
+                    drawRectanglePDFBox(borderBottomSize, getBorderColor(elem, "bottom"), bX, bY, bWidth, bHeight);
                 }
             }
         }
-        return 0;
     }
 
     /*
@@ -1907,37 +1870,30 @@ public class PDFRenderer implements BoxRenderer
      *            line width of left border side
      * @param borRad
      *            class, which contains border radiuses of each corner
+     * @throws IOException 
      */
-    private int drawBgInsideBorderRadius(ElementBox elem, float bTopSize, float bRightSize, float bBotSize,
-            float bLeftSize, BorderRadius borRad)
+    private void drawBgInsideBorderRadius(ElementBox elem, float bTopSize, float bRightSize, float bBotSize,
+            float bLeftSize, BorderRadius borRad) throws IOException
     {
-        try
-        {
-            float bezier = 0.551915024494f;
-            content.setLineWidth(1);
-            setNonStrokingColor(elem.getBgcolor());
-            setStrokingColor(elem.getBgcolor());
-            // drawing inside border
-            content.moveTo(ax, ay - bTopSize);
-            content.curveTo1((ax + bx) / 2, (ay + bTopSize + by - bTopSize) / 2, bx, by - bTopSize);
-            content.curveTo(bx + bezier * borRad.topRightX, by - bTopSize, cx - bRightSize,
-                    cy + bezier * borRad.topRightY, cx - bRightSize, cy);
-            content.curveTo1((cx - bRightSize + dx - bRightSize) / 2, (cy + dy) / 2, dx - bRightSize, dy);
-            content.curveTo(dx - bRightSize, dy - bezier * borRad.botRightY, ex + bezier * borRad.botRightX,
-                    ey + bBotSize, ex, ey + bBotSize);
-            content.curveTo1((ex + fx) / 2, (ey + bBotSize + fy + bBotSize) / 2, fx, fy + bBotSize);
-            content.curveTo(fx - bezier * borRad.botLeftX, fy + bBotSize, gx + bLeftSize, gy - bezier * borRad.botLeftY,
-                    gx + bLeftSize, gy);
-            content.curveTo1((gx + bLeftSize + hx + bLeftSize) / 2, (gy + hy) / 2, hx + bLeftSize, hy);
-            content.curveTo(hx + bLeftSize, hy + bezier * borRad.topLeftY, ax - bezier * borRad.topLeftX, ay - bTopSize,
-                    ax, ay - bTopSize);
-            content.fillAndStroke(); // insert background and colour of border
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
+        final float bezier = 0.551915024494f;
+        content.setLineWidth(1);
+        setNonStrokingColor(elem.getBgcolor());
+        setStrokingColor(elem.getBgcolor());
+        // drawing inside border
+        content.moveTo(ax, ay - bTopSize);
+        content.curveTo1((ax + bx) / 2, (ay + bTopSize + by - bTopSize) / 2, bx, by - bTopSize);
+        content.curveTo(bx + bezier * borRad.topRightX, by - bTopSize, cx - bRightSize,
+                cy + bezier * borRad.topRightY, cx - bRightSize, cy);
+        content.curveTo1((cx - bRightSize + dx - bRightSize) / 2, (cy + dy) / 2, dx - bRightSize, dy);
+        content.curveTo(dx - bRightSize, dy - bezier * borRad.botRightY, ex + bezier * borRad.botRightX,
+                ey + bBotSize, ex, ey + bBotSize);
+        content.curveTo1((ex + fx) / 2, (ey + bBotSize + fy + bBotSize) / 2, fx, fy + bBotSize);
+        content.curveTo(fx - bezier * borRad.botLeftX, fy + bBotSize, gx + bLeftSize, gy - bezier * borRad.botLeftY,
+                gx + bLeftSize, gy);
+        content.curveTo1((gx + bLeftSize + hx + bLeftSize) / 2, (gy + hy) / 2, hx + bLeftSize, hy);
+        content.curveTo(hx + bLeftSize, hy + bezier * borRad.topLeftY, ax - bezier * borRad.topLeftX, ay - bTopSize,
+                ax, ay - bTopSize);
+        content.fillAndStroke(); // insert background and colour of border
     }
 
     /**
@@ -1957,74 +1913,68 @@ public class PDFRenderer implements BoxRenderer
      *            line width of left border side
      * @param borRad
      *            class, which contains border radiuses of each corner
+     * @throws IOException 
      */
-    private int drawBorderRadius(ElementBox elem, float bTopSize, float bRightSize, float bBotSize, float bLeftSize,
-            BorderRadius borRad)
+    private void drawBorderRadius(ElementBox elem, float bTopSize, float bRightSize, float bBotSize, float bLeftSize,
+            BorderRadius borRad) throws IOException
     {
-        try
-        {
-            float bezier = 0.551915024494f;
-            if (bTopSize != 0)
-            { // drawing top border
-                content.setLineWidth(bTopSize);
-                setStrokingColor(getBorderColor(elem, "top"));
-                content.moveTo(ax, ay);
-                content.curveTo1((ax + bx) / 2, (ay + by) / 2, bx, by);
-                content.curveTo(bx + bezier * borRad.topRightX, by, cx, cy + bezier * borRad.topRightY, cx, cy);
-                content.stroke();
-            }
-            if (bRightSize != 0)
-            { // drawing right border
-                content.setLineWidth(bRightSize);
-                setStrokingColor(getBorderColor(elem, "right"));
-                content.moveTo(cx, cy);
-                content.curveTo1((cx + dx) / 2, (cy + dy) / 2, dx, dy);
-                content.curveTo(dx, dy - bezier * borRad.botRightY, ex + bezier * borRad.botRightX, ey, ex, ey);
-                content.stroke();
-            }
-            if (bBotSize != 0)
-            { // drawing bot border
-                content.setLineWidth(bBotSize);
-                setStrokingColor(getBorderColor(elem, "bottom"));
-                content.moveTo(ex, ey);
-                content.curveTo1((ex + fx) / 2, (ey + fy) / 2, fx, fy);
-                content.curveTo(fx - bezier * borRad.botLeftX, fy, gx, gy - bezier * borRad.botLeftY, gx, gy);
-                content.stroke();
-            }
-            if (bLeftSize != 0)
-            { // drawing left border
-                content.setLineWidth(bLeftSize);
-                setStrokingColor(getBorderColor(elem, "left"));
-                content.moveTo(gx, gy);
-                content.curveTo1((gx + hx) / 2, (gy + hy) / 2, hx, hy);
-                content.curveTo(hx, hy + bezier * borRad.topLeftY, ax - bezier * borRad.topLeftX, ay, ax, ay);
-                content.stroke();
-            }
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            return -1;
+        float bezier = 0.551915024494f;
+        if (bTopSize != 0)
+        { // drawing top border
+            content.setLineWidth(bTopSize);
+            setStrokingColor(getBorderColor(elem, "top"));
+            content.moveTo(ax, ay);
+            content.curveTo1((ax + bx) / 2, (ay + by) / 2, bx, by);
+            content.curveTo(bx + bezier * borRad.topRightX, by, cx, cy + bezier * borRad.topRightY, cx, cy);
+            content.stroke();
         }
-        return 0;
+        if (bRightSize != 0)
+        { // drawing right border
+            content.setLineWidth(bRightSize);
+            setStrokingColor(getBorderColor(elem, "right"));
+            content.moveTo(cx, cy);
+            content.curveTo1((cx + dx) / 2, (cy + dy) / 2, dx, dy);
+            content.curveTo(dx, dy - bezier * borRad.botRightY, ex + bezier * borRad.botRightX, ey, ex, ey);
+            content.stroke();
+        }
+        if (bBotSize != 0)
+        { // drawing bot border
+            content.setLineWidth(bBotSize);
+            setStrokingColor(getBorderColor(elem, "bottom"));
+            content.moveTo(ex, ey);
+            content.curveTo1((ex + fx) / 2, (ey + fy) / 2, fx, fy);
+            content.curveTo(fx - bezier * borRad.botLeftX, fy, gx, gy - bezier * borRad.botLeftY, gx, gy);
+            content.stroke();
+        }
+        if (bLeftSize != 0)
+        { // drawing left border
+            content.setLineWidth(bLeftSize);
+            setStrokingColor(getBorderColor(elem, "left"));
+            content.moveTo(gx, gy);
+            content.curveTo1((gx + hx) / 2, (gy + hy) / 2, hx, hy);
+            content.curveTo(hx, hy + bezier * borRad.topLeftY, ax - bezier * borRad.topLeftX, ay, ax, ay);
+            content.stroke();
+        }
     }
 
     /**
      * Draws colored background to OUTPUT
-     * 
-     * @returns 0 for inserted OK, -1 for exception occurs and 1 for element
-     *          completely out of page
+     * @throws IOException 
      */
-    private int drawBgToElem(ElementBox elem, int i, float plusOffset, float plusHeight, boolean radialGrad,
-            boolean linearGrad, PDShadingType3 shading, Matrix matrix)
+    private void drawBgToElem(ElementBox elem, int i, float plusOffset, float plusHeight, boolean radialGrad,
+            boolean linearGrad, PDShadingType3 shading, Matrix matrix) throws IOException
     {
         // checks if any color available
         if ((elem.getBgcolor() == null) && (!radialGrad) && (!linearGrad)) 
-            return 0;
+            return;
 
         // for root element the background color will be painted to background
         // of whole page
         if ((elem.getParent() == null) && (!radialGrad) && (!linearGrad)) // TODO gradient in the whole page?
-            return drawBgToWholePagePDFBox(elem.getBgcolor());
+        {
+            drawBgToWholePagePDFBox(elem.getBgcolor());
+            return;
+        }
 
         // calculates the start and the end of current page
         float pageStart = i * pageFormat.getHeight();
@@ -2034,7 +1984,7 @@ public class PDFRenderer implements BoxRenderer
         if (elem.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
                 || (elem.getAbsoluteContentY() + elem.getContentHeight()) * resCoef + plusOffset
                         + plusHeight < pageStart)
-            return 1;
+            return;
 
         // calculates the padding
         float paddingTop = elem.getPadding().top * resCoef;
@@ -2042,47 +1992,36 @@ public class PDFRenderer implements BoxRenderer
         float paddingBottom = elem.getPadding().bottom * resCoef;
         float paddingLeft = elem.getPadding().left * resCoef;
 
-        try
-        {
-            float border_x = elem.getAbsoluteContentX() * resCoef - paddingLeft;
-            float border_y = pageFormat.getHeight() - (elem.getAbsoluteContentY() * resCoef + plusOffset)
-                    + i * pageFormat.getHeight() - elem.getContentHeight() * resCoef - plusHeight - paddingBottom;
-            if (radialGrad)
-            { // if the background is radial gradient
-                drawBgGrad(0, shading, border_x, border_y,
-                        (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
-                        elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight, matrix);
+        float border_x = elem.getAbsoluteContentX() * resCoef - paddingLeft;
+        float border_y = pageFormat.getHeight() - (elem.getAbsoluteContentY() * resCoef + plusOffset)
+                + i * pageFormat.getHeight() - elem.getContentHeight() * resCoef - plusHeight - paddingBottom;
+        if (radialGrad)
+        { // if the background is radial gradient
+            drawBgGrad(0, shading, border_x, border_y,
+                    (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
+                    elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight, matrix);
 
-            }
-            else if (linearGrad)
-            { // if is linear gradient
-                drawBgGrad(0, shading, border_x, border_y,
-                        (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
-                        elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight, matrix);
-
-            }
-            else
-            {
-                drawRectanglePDFBox(0, elem.getBgcolor(), border_x, border_y,
-                        (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
-                        elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight);
-            }
-
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            return -1;
         }
-        return 0;
+        else if (linearGrad)
+        { // if is linear gradient
+            drawBgGrad(0, shading, border_x, border_y,
+                    (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
+                    elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight, matrix);
+
+        }
+        else
+        {
+            drawRectanglePDFBox(0, elem.getBgcolor(), border_x, border_y,
+                    (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
+                    elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight);
+        }
     }
 
     /**
      * Draws text to OUTPUT
-     * 
-     * @returns 0 for inserted ok, -1 for exception occures and 1 for text out
-     *          of page
+     * @throws IOException 
      */
-    private int insertText(TextBox text, int i, float plusOffset, float plusHeight)
+    private void insertText(TextBox text, int i, float plusOffset, float plusHeight) throws IOException
     {
         // counts the distance between top of the document and the start/end of
         // the page
@@ -2092,7 +2031,7 @@ public class PDFRenderer implements BoxRenderer
         // checks if the whole text is out of the page
         if (text.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
                 || (text.getAbsoluteContentY() + text.getHeight()) * resCoef + plusOffset < pageStart)
-            return 1;
+            return;
 
         // gets data describing the text
         PDFVisualContext ctx = (PDFVisualContext) text.getVisualContext();
@@ -2103,29 +2042,21 @@ public class PDFRenderer implements BoxRenderer
         Color color = ctx.getColor();
         PDFont font = ctx.getFont();
         
-        try
-        {
-            setNonStrokingColor(color);
-            final float leading = 2f * fontSize;
+        setNonStrokingColor(color);
+        final float leading = 2f * fontSize;
 
-            // compute the resized coordinates
-            float startX = text.getAbsoluteContentX() * resCoef;
-            float startY = (text.getAbsoluteContentY() * resCoef + plusOffset) % pageFormat.getHeight();
+        // compute the resized coordinates
+        float startX = text.getAbsoluteContentX() * resCoef;
+        float startY = (text.getAbsoluteContentY() * resCoef + plusOffset) % pageFormat.getHeight();
 
-            // write to PDF
-            if (text.getWordSpacing() == null && text.getExtraWidth() == 0)
-                writeTextPDFBox(startX, startY, text.getText(), font, fontSize, isUnderlined, isBold, letterSpacing, leading);
-            else
-                writeTextByWords(startX, startY, text, font, fontSize, isUnderlined, isBold, letterSpacing, leading);
-            
-        } catch (Exception e) {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
+        // write to PDF
+        if (text.getWordSpacing() == null && text.getExtraWidth() == 0)
+            writeTextPDFBox(startX, startY, text.getText(), font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+        else
+            writeTextByWords(startX, startY, text, font, fontSize, isUnderlined, isBold, letterSpacing, leading);
     }
 
-    private int insertMarker(ListItemBox item, int i, float plusOffset, float plusHeight)
+    private void insertMarker(ListItemBox item, int i, float plusOffset, float plusHeight) throws IOException
     {
         // counts the distance between top of the document and the start/end of
         // the page
@@ -2135,22 +2066,14 @@ public class PDFRenderer implements BoxRenderer
         // checks if the whole text is out of the page
         if (item.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
                 || (item.getAbsoluteContentY() + item.getHeight()) * resCoef + plusOffset < pageStart)
-            return 1;
+            return;
 
         PDFVisualContext ctx = (PDFVisualContext) item.getVisualContext();
         final float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef);
         final float leading = 2f * fontSize;
         
-        try
-        {
-            // write to PDF
-            writeBullet(item, plusOffset, leading);
-            
-        } catch (Exception e) {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
+        // write to PDF
+        writeBullet(item, plusOffset, leading);
     }
     
     /////////////////////////////////////////////////////////////////////////
@@ -2163,151 +2086,117 @@ public class PDFRenderer implements BoxRenderer
 
     /**
      * Creates the document content stream.
+     * @throws IOException 
      */
-    private void initContentStream()
+    private void initContentStream() throws IOException
     {
-        try
-        {
-            content = new PDPageContentStream(doc, page);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        content = new PDPageContentStream(doc, page);
     }
     
     /**
      * Closes the document content stream.
+     * @throws IOException 
      */
-    private void closeContentStream()
+    private void closeContentStream() throws IOException
     {
-        try {
-            content.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        content.close();
     }
 
     /**
      * Inserts N pages to PDF document using PDFBox
      */
-    private int insertNPagesPDFBox(int pageCount)
+    private void insertNPagesPDFBox(int pageCount)
     {
         for (int i = 1; i < pageCount; i++)
         {
             PDPage page = new PDPage(pageFormat);
             doc.addPage(page);
         }
-        return 0;
     }
 
     /**
      * Changes recent page using PDFBox
+     * @throws IOException 
      */
-    private int changeCurrentPageToPDFBox(int i)
+    private void changeCurrentPageToPDFBox(int i) throws IOException
     {
         page = (PDPage) doc.getDocumentCatalog().getPages().get(i);
-
-        try
-        {
-            content.close();
-            content = new PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true);
-        } catch (IOException e)
-        {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
+        content.close();
+        content = new PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true);
     }
 
     /**
      * Inserts background to whole recent PDF page using PDFBox
+     * @throws IOException 
      */
-    private int drawBgToWholePagePDFBox(Color bgColor)
+    private void drawBgToWholePagePDFBox(Color bgColor) throws IOException
     {
-        try
-        {
-            setNonStrokingColor(bgColor);
-            content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
-            content.fill();
-        } catch (IOException e)
-        {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
+        setNonStrokingColor(bgColor);
+        content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
+        content.fill();
     }
 
     /**
      * Inserts rectangle to recent PDF page using PDFBox
+     * @throws IOException 
      */
-    private int drawRectanglePDFBox(float lineWidth, Color bgColor, float x, float y, float width, float height)
+    private void drawRectanglePDFBox(float lineWidth, Color bgColor, float x, float y, float width, float height) throws IOException
     {
-        if (bgColor == null)
-            return 1;
-        try
+        if (bgColor != null)
         {
             content.setLineWidth(lineWidth);
             setNonStrokingColor(bgColor);
             content.addRect(x, y, width, height);
             content.fill();
-        } catch (IOException e)
-        {
-            e.printStackTrace();
-            return -1;
         }
-        return 0;
     }
 
-    private void drawCirclePDFBox(float lineWidth, Color color, float cx, float cy, float r, boolean fill) 
+    private void drawCirclePDFBox(float lineWidth, Color color, float cx, float cy, float r, boolean fill) throws IOException 
     {
-        try
+        final float k = 0.552284749831f;
+        if (fill)
         {
-            final float k = 0.552284749831f;
-            if (fill)
-            {
-                setNonStrokingColor(color);
-            }
-            else
-            {
-                content.setLineWidth(lineWidth);
-                setStrokingColor(color);
-            }
-            content.moveTo(cx - r, cy);
-            content.curveTo(cx - r, cy + k * r, cx - k * r, cy + r, cx, cy + r);
-            content.curveTo(cx + k * r, cy + r, cx + r, cy + k * r, cx + r, cy);
-            content.curveTo(cx + r, cy - k * r, cx + k * r, cy - r, cx, cy - r);
-            content.curveTo(cx - k * r, cy - r, cx - r, cy - k * r, cx - r, cy);
-            if (fill)
-                content.fill();
-            else
-                content.stroke();
-        } catch (IOException e) {
-            e.printStackTrace();
+            setNonStrokingColor(color);
         }
+        else
+        {
+            content.setLineWidth(lineWidth);
+            setStrokingColor(color);
+        }
+        content.moveTo(cx - r, cy);
+        content.curveTo(cx - r, cy + k * r, cx - k * r, cy + r, cx, cy + r);
+        content.curveTo(cx + k * r, cy + r, cx + r, cy + k * r, cx + r, cy);
+        content.curveTo(cx + r, cy - k * r, cx + k * r, cy - r, cx, cy - r);
+        content.curveTo(cx - k * r, cy - r, cx - r, cy - k * r, cx - r, cy);
+        if (fill)
+            content.fill();
+        else
+            content.stroke();
     }    
     
     /**
      * Inserts image to recent PDF page using PDFBox
+     * @throws IOException 
      */
-    private int insertImagePDFBox(BufferedImage img, float x, float y, float width, float height)
+    private void insertImagePDFBox(BufferedImage img, float x, float y, float width, float height) throws IOException
     {
         // transform X,Y coordinates to Apache PDFBox format
         y = pageFormat.getHeight() - height - y;
 
-        try
-        {
-            // PDXObjectImage ximage = new PDPixelMap(doc, img);
-            // content.drawXObject(ximage, x, y, width, height);
-            PDImageXObject ximage = LosslessFactory.createFromImage(doc, img);
-            content.drawImage(ximage, x, y, width, height);
-        } catch (IOException e)
-        {
-            e.printStackTrace();
-            return -1;
-        }
-        return 0;
+        // PDXObjectImage ximage = new PDPixelMap(doc, img);
+        // content.drawXObject(ximage, x, y, width, height);
+        PDImageXObject ximage = LosslessFactory.createFromImage(doc, img);
+        content.drawImage(ximage, x, y, width, height);
     }
 
-    private void writeBullet(ListItemBox lb, float plusOffset, float leading)
+    /**
+     * 
+     * @param lb
+     * @param plusOffset
+     * @param leading
+     * @throws IOException
+     */
+    private void writeBullet(ListItemBox lb, float plusOffset, float leading) throws IOException
     {
         if (lb.hasVisibleBullet())
         {
@@ -2355,9 +2244,10 @@ public class PDFRenderer implements BoxRenderer
      * @param isBold
      * @param letterSpacing
      * @param leading
+     * @throws IOException 
      */
     private void writeTextByWords(float x, float y, TextBox text, PDFont font, float fontSize,
-            boolean isUnderlined, boolean isBold, float letterSpacing, float leading)
+            boolean isUnderlined, boolean isBold, float letterSpacing, float leading) throws IOException
     {
         final String[] words = text.getText().split(" ");
         if (words.length > 0)
@@ -2381,56 +2271,48 @@ public class PDFRenderer implements BoxRenderer
      * @param isBold
      * @param letterSpacing
      * @param leading
-     * @return
+     * @throws IOException 
      */
-    private int writeTextPDFBox(float x, float y, String textToInsert, PDFont font, float fontSize,
-            boolean isUnderlined, boolean isBold, float letterSpacing, float leading)
+    private void writeTextPDFBox(float x, float y, String textToInsert, PDFont font, float fontSize,
+            boolean isUnderlined, boolean isBold, float letterSpacing, float leading) throws IOException
     {
         // transform X,Y coordinates to Apache PDFBox format
         y = pageFormat.getHeight() - y - leading * resCoef;
 
+        content.beginText();
+        content.setFont(font, fontSize);
+        content.setCharacterSpacing(letterSpacing);
+        content.newLineAtOffset(x, y);
         try
         {
-            content.beginText();
-            content.setFont(font, fontSize);
-            content.setCharacterSpacing(letterSpacing);
-            content.newLineAtOffset(x, y);
-            try
-            {
-                content.showText(textToInsert);
-            } catch (IllegalArgumentException e)
-            {
-                // NOTE: seems to happen for embedded icon fonts like glyphicons
-                // and fa, add space so there is some text otherwise PDFBox
-                // throws IllegalStateException: subset is empty; these work
-                // with SVGRenderer
-                content.showText(" ");
-                System.err.println("Error: " + e.getMessage());
-            }
-            content.endText();
-
-            // underlines text if text is set underlined
-            if (isUnderlined)
-            {
-                content.setLineWidth(1);
-                float strokeWidth = font.getStringWidth(textToInsert) / 1000 * fontSize;
-                float lineHeightCalibration = 1f;
-                float yOffset = fontSize / 6.4f;
-                if (isBold)
-                {
-                    lineHeightCalibration = 1.5f;
-                    yOffset = fontSize / 5.7f;
-                }
-
-                content.addRect(x, y - yOffset, strokeWidth, resCoef * lineHeightCalibration);
-                content.fill();
-            }
-        } catch (IOException e)
+            content.showText(textToInsert);
+        } catch (IllegalArgumentException e)
         {
-            e.printStackTrace();
-            return -1;
+            // NOTE: seems to happen for embedded icon fonts like glyphicons
+            // and fa, add space so there is some text otherwise PDFBox
+            // throws IllegalStateException: subset is empty; these work
+            // with SVGRenderer
+            content.showText(" ");
+            System.err.println("Error: " + e.getMessage());
         }
-        return 0;
+        content.endText();
+
+        // underlines text if text is set underlined
+        if (isUnderlined)
+        {
+            content.setLineWidth(1);
+            float strokeWidth = font.getStringWidth(textToInsert) / 1000 * fontSize;
+            float lineHeightCalibration = 1f;
+            float yOffset = fontSize / 6.4f;
+            if (isBold)
+            {
+                lineHeightCalibration = 1.5f;
+                yOffset = fontSize / 5.7f;
+            }
+
+            content.addRect(x, y - yOffset, strokeWidth, resCoef * lineHeightCalibration);
+            content.fill();
+        }
     }
 
     /**
