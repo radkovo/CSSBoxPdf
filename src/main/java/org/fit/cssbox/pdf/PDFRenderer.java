@@ -29,6 +29,8 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,6 +45,9 @@ import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType3;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
 import org.apache.pdfbox.util.Matrix;
 import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.layout.BackgroundImage;
@@ -57,6 +62,7 @@ import org.fit.cssbox.layout.ReplacedContent;
 import org.fit.cssbox.layout.ReplacedImage;
 import org.fit.cssbox.layout.TextBox;
 import org.fit.cssbox.render.BoxRenderer;
+import org.w3c.dom.Element;
 
 import cz.vutbr.web.css.CSSProperty;
 import cz.vutbr.web.css.NodeData;
@@ -2054,6 +2060,37 @@ public class PDFRenderer implements BoxRenderer
             writeTextPDFBox(startX, startY, text.getText(), font, fontSize, isUnderlined, isBold, letterSpacing, leading);
         else
             writeTextByWords(startX, startY, text, font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+        
+        // render links
+        String href = getLinkURL(text);
+        if (href != null)
+        {
+            URL base = text.getViewport().getFactory().getBaseURL();
+            URL url = null;
+            try {
+                url = new URL(base, href);
+            } catch (MalformedURLException e) {
+            }
+            
+            PDAnnotationLink link = new PDAnnotationLink();
+            PDActionURI actionURI = new PDActionURI();
+            actionURI.setURI(url != null ? url.toString() : href);
+            link.setAction(actionURI);
+            
+            PDBorderStyleDictionary borderULine = new PDBorderStyleDictionary();
+            borderULine.setStyle(PDBorderStyleDictionary.STYLE_UNDERLINE);
+            borderULine.setWidth(0);
+            link.setBorderStyle(borderULine);
+            
+            final float sy = pageFormat.getHeight() - startY;
+            PDRectangle pdRectangle = new PDRectangle();
+            pdRectangle.setLowerLeftX(startX);
+            pdRectangle.setLowerLeftY(sy - text.getContentHeight() * resCoef);
+            pdRectangle.setUpperRightX(startX + text.getContentWidth() * resCoef);
+            pdRectangle.setUpperRightY(sy);
+            link.setRectangle(pdRectangle);
+            page.getAnnotations().add(link);
+        }
     }
 
     private void insertMarker(ListItemBox item, int i, float plusOffset, float plusHeight) throws IOException
@@ -2385,4 +2422,42 @@ public class PDFRenderer implements BoxRenderer
         return new PDColor(components, PDDeviceRGB.INSTANCE);
     }
     
+    /**
+     * Examines the given element and all its parent elements in order to find the "a" element.
+     * @param e the child element to start with
+     * @return the "a" element found or null if it is not present
+     */
+    private org.w3c.dom.Element findAnchorElement(org.w3c.dom.Element e)
+    {
+        final String href = e.getAttribute("href");
+        if ("a".equalsIgnoreCase(e.getTagName().trim()) && href != null && !href.isEmpty())
+            return e;
+        else if (e.getParentNode() != null && e.getParentNode().getNodeType() == org.w3c.dom.Node.ELEMENT_NODE)
+            return findAnchorElement((org.w3c.dom.Element) e.getParentNode());
+        else
+            return null;
+    }
+
+    private String getLinkURL(Element elem)
+    {
+        Element el = findAnchorElement(elem);
+        if (el != null)
+            return el.getAttribute("href").trim();
+        else
+            return null;
+    }
+    
+    private String getLinkURL(ElementBox elem)
+    {
+        return getLinkURL(elem.getElement());
+    }
+    
+    private String getLinkURL(TextBox text)
+    {
+        org.w3c.dom.Node parent = text.getNode().getParentNode();
+        if (parent != null && parent instanceof Element)
+            return getLinkURL((Element) parent);
+        else
+            return null;
+    }
 }
