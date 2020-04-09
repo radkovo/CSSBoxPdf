@@ -30,11 +30,13 @@ import org.apache.pdfbox.pdmodel.font.FontMapping;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.fit.cssbox.awt.GraphicsImageLoader;
 import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.css.FontSpec;
 import org.fit.cssbox.css.FontTable;
 import org.fit.cssbox.layout.BrowserConfig;
 import org.fit.cssbox.layout.FontInfo;
+import org.fit.cssbox.layout.ImageLoader;
 import org.fit.cssbox.layout.VisualContext;
 
 import cz.vutbr.web.css.CSSProperty.FontStyle;
@@ -59,6 +61,8 @@ public class PDFVisualContext extends VisualContext
     private float ch; // 1ch length in points
     private FontCache fontCache; //font cache to store already created fonts
     
+    /** Used image loader instance */
+    private ImageLoader imageLoader;
     
     public PDFVisualContext(PDDocument doc, VisualContext parent, BrowserConfig config, FontTable fontTable)
     {
@@ -286,4 +290,13 @@ public class PDFVisualContext extends VisualContext
         }
     }
 
+    //=========================================================================
+    
+    @Override
+    public ImageLoader getImageLoader()
+    {
+        if (imageLoader == null)
+            imageLoader = new GraphicsImageLoader(this);
+        return imageLoader;
+    }
 }

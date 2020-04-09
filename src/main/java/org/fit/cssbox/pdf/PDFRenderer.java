@@ -49,6 +49,8 @@ import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
 import org.apache.pdfbox.util.Matrix;
+import org.fit.cssbox.awt.BackgroundBitmap;
+import org.fit.cssbox.awt.BitmapImage;
 import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.layout.BackgroundImage;
 import org.fit.cssbox.layout.Box;
@@ -61,6 +63,7 @@ import org.fit.cssbox.layout.ReplacedBox;
 import org.fit.cssbox.layout.ReplacedContent;
 import org.fit.cssbox.layout.ReplacedImage;
 import org.fit.cssbox.layout.TextBox;
+import org.fit.cssbox.render.BackgroundImageImage;
 import org.fit.cssbox.render.BoxRenderer;
 import org.w3c.dom.Element;
 
@@ -1632,30 +1635,34 @@ public class PDFRenderer implements BoxRenderer
         {
             if (cont instanceof ReplacedImage)
             {
-                BufferedImage img = ((ReplacedImage) cont).getBufferedImage();
-                float pageStart = i * pageFormat.getHeight();
-                float pageEnd = (i + 1) * pageFormat.getHeight();
-
-                Rectangle cb = ((Box) box).getAbsoluteContentBounds();
-                if (img != null && cb.y * resCoef < pageEnd
-                        && (cb.y + img.getHeight()) * resCoef + plusHeight + plusOffset > pageStart)
+                final ReplacedImage rimg = (ReplacedImage) cont;
+                if (rimg.getImage() != null && rimg.getImage() instanceof BitmapImage)
                 {
-                    img = filter.filterImg(img);
-                    // calculates resized coordinates in CSSBox form
-                    float startX = cb.x * resCoef;
-                    float startY = (cb.y * resCoef + plusOffset + plusHeight) - i * pageFormat.getHeight(); // y position in the page
-                    float width = (float) cb.getWidth() * resCoef;
-                    float height = (float) cb.getHeight() * resCoef + plusHeight;
-                    if (isBorderRad)
-                    { // if border radius is set
-                        float radiusX = Math.max(Math.max(borRad.topLeftX, borRad.topRightX),
-                                Math.max(borRad.botLeftX, borRad.botRightX));
-                        float radiusY = Math.max(Math.max(borRad.topLeftY, borRad.topRightY),
-                                Math.max(borRad.botLeftY, borRad.botRightY));
-                        img = makeImgRadiusCorner(img, radiusX, radiusY);
+                    BufferedImage img = ((BitmapImage) rimg.getImage()).getBufferedImage();
+                    float pageStart = i * pageFormat.getHeight();
+                    float pageEnd = (i + 1) * pageFormat.getHeight();
+    
+                    Rectangle cb = ((Box) box).getAbsoluteContentBounds();
+                    if (img != null && cb.y * resCoef < pageEnd
+                            && (cb.y + img.getHeight()) * resCoef + plusHeight + plusOffset > pageStart)
+                    {
+                        img = filter.filterImg(img);
+                        // calculates resized coordinates in CSSBox form
+                        float startX = cb.x * resCoef;
+                        float startY = (cb.y * resCoef + plusOffset + plusHeight) - i * pageFormat.getHeight(); // y position in the page
+                        float width = (float) cb.getWidth() * resCoef;
+                        float height = (float) cb.getHeight() * resCoef + plusHeight;
+                        if (isBorderRad)
+                        { // if border radius is set
+                            float radiusX = Math.max(Math.max(borRad.topLeftX, borRad.topRightX),
+                                    Math.max(borRad.botLeftX, borRad.botRightX));
+                            float radiusY = Math.max(Math.max(borRad.topLeftY, borRad.topRightY),
+                                    Math.max(borRad.botLeftY, borRad.botRightY));
+                            img = makeImgRadiusCorner(img, radiusX, radiusY);
+                        }
+                        // inserts image
+                        insertImagePDFBox(img, startX, startY, width, height);
                     }
-                    // inserts image
-                    insertImagePDFBox(img, startX, startY, width, height);
                 }
             }
         }
@@ -1668,37 +1675,50 @@ public class PDFRenderer implements BoxRenderer
     private void insertBgImg(ElementBox elem, int i, float plusOffset, float plusHeight, Filter filter,
             boolean isBorderRad, BorderRadius borRad) throws IOException
     {
-        for (BackgroundImage bimg : elem.getBackgroundImages())
+        if (elem.getBackgroundImages() != null)
         {
-            BufferedImage img = bimg.getBufferedImage();
-            float pageStart = i * pageFormat.getHeight();
-            float pageEnd = (i + 1) * pageFormat.getHeight();
-            if (img != null && elem.getAbsoluteContentY() * resCoef + plusOffset < pageEnd
-                    && (elem.getAbsoluteContentY() + img.getHeight()) * resCoef + plusOffset + plusHeight > pageStart)
+            final BackgroundBitmap bitmap = new BackgroundBitmap(elem);
+            for (BackgroundImage img : elem.getBackgroundImages())
             {
-                img = filter.filterImg(img);
-                // calculates resized coordinates in CSSBox form
-                float startX = (elem.getAbsoluteContentX() - elem.getPadding().left) * resCoef;
-                float startY = (elem.getAbsoluteContentY() - elem.getPadding().top) * resCoef + plusOffset
-                        - i * pageFormat.getHeight();
-                float width = img.getWidth() * resCoef;
-                float height = img.getHeight() * resCoef;
-
-                // correction of long backgrounds
-                if (height > 5 * plusHeight) height += plusHeight;
-
-                // if corner radius is set
-                if (isBorderRad)
-                { // if border radius is set
-                    float radiusX = Math.max(Math.max(borRad.topLeftX, borRad.topRightX),
-                            Math.max(borRad.botLeftX, borRad.botRightX));
-                    float radiusY = Math.max(Math.max(borRad.topLeftY, borRad.topRightY),
-                            Math.max(borRad.botLeftY, borRad.botRightY));
-                    img = makeImgRadiusCorner(img, radiusX * 2, radiusY * 2);
+                if (img instanceof BackgroundImageImage)
+                {
+                    bitmap.addBackgroundImage((BackgroundImageImage) img);
                 }
+            }
+            if (bitmap.getBufferedImage() != null)
+            {
+                //final Rectangle bg = elem.getAbsoluteBorderBounds();
+                //g.drawImage(bitmap.getBufferedImage(), Math.round(bg.x), Math.round(bg.y), null);
+                BufferedImage img = bitmap.getBufferedImage();
+                float pageStart = i * pageFormat.getHeight();
+                float pageEnd = (i + 1) * pageFormat.getHeight();
+                if (img != null && elem.getAbsoluteContentY() * resCoef + plusOffset < pageEnd
+                        && (elem.getAbsoluteContentY() + img.getHeight()) * resCoef + plusOffset + plusHeight > pageStart)
+                {
+                    img = filter.filterImg(img);
+                    // calculates resized coordinates in CSSBox form
+                    Rectangle bb = elem.getAbsoluteBorderBounds();
+                    float startX = bb.x * resCoef;
+                    float startY = bb.y * resCoef + plusOffset - i * pageFormat.getHeight();
+                    float width = img.getWidth() * resCoef;
+                    float height = img.getHeight() * resCoef;
 
-                // inserts image
-                insertImagePDFBox(img, startX, startY, width, height);
+                    // correction of long backgrounds
+                    if (height > 5 * plusHeight) height += plusHeight;
+
+                    // if corner radius is set
+                    if (isBorderRad)
+                    { // if border radius is set
+                        float radiusX = Math.max(Math.max(borRad.topLeftX, borRad.topRightX),
+                                Math.max(borRad.botLeftX, borRad.botRightX));
+                        float radiusY = Math.max(Math.max(borRad.topLeftY, borRad.topRightY),
+                                Math.max(borRad.botLeftY, borRad.botRightY));
+                        img = makeImgRadiusCorner(img, radiusX * 2, radiusY * 2);
+                    }
+
+                    // inserts image
+                    insertImagePDFBox(img, startX, startY, width, height);
+                }
             }
         }
     }
