@@ -24,7 +24,7 @@ import cz.vutbr.web.csskit.Color;
  * 
  * @author Nguyen Hoang Duong
  */
-public class LinearGradient
+public class PLinearGradient
 {
     public double x1;
     public double y1;

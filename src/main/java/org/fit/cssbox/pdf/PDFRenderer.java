@@ -51,6 +51,7 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
 import org.apache.pdfbox.util.Matrix;
 import org.fit.cssbox.awt.BackgroundBitmap;
 import org.fit.cssbox.awt.BitmapImage;
+import org.fit.cssbox.css.BackgroundDecoder;
 import org.fit.cssbox.css.CSSUnits;
 import org.fit.cssbox.layout.BackgroundImage;
 import org.fit.cssbox.layout.Box;
@@ -65,6 +66,7 @@ import org.fit.cssbox.layout.ReplacedImage;
 import org.fit.cssbox.layout.TextBox;
 import org.fit.cssbox.render.BackgroundImageImage;
 import org.fit.cssbox.render.BoxRenderer;
+import org.fit.cssbox.render.StructuredRenderer;
 import org.w3c.dom.Element;
 
 import cz.vutbr.web.css.CSSProperty;
@@ -87,22 +89,23 @@ import cz.vutbr.web.css.TermIdent;
  * @author Nguyen Hoang Duong
  * @author Radek Burget
  */
-public class PDFRenderer implements BoxRenderer
+public class PDFRenderer extends StructuredRenderer
 {
-    private float resCoef, rootHeight;
-
-    // PDFBox variables
+    private float rootWidth;
+    private float rootHeight;
     private PDDocument doc = null;
-    private PDPage page = null;
-    private PDPageContentStream content = null;
-    private PDRectangle pageFormat = null;
+    
+    private PDFOutput pdf;
 
+    // top and bottom padding in pixels
+    private float outputTopPadding;
+    private float outputBottomPadding;
+    
     // variables for rendering border radius
     private float ax, ay, bx, by, cx, cy, dx, dy, ex, ey, fx, fy, gx, gy, hx, hy;
 
     // page help variables
-    private int pageCount;
-    private float pageEnd;
+    //private float pageEnd;
 
     // TREE and LIST variables
     private Node rootNodeOfTree, recentNodeInTree, rootNodeOfList, recentNodeInList;
@@ -112,32 +115,17 @@ public class PDFRenderer implements BoxRenderer
     private List<float[]> breakTable = new ArrayList<>(2);
     private List<float[]> avoidTable = new ArrayList<>(2);
 
-    // padding
-    private float outputTopPadding;
-    private float outputBottomPadding;
-
 
     public PDFRenderer(float rootWidth, float rootHeight, PDDocument doc)
     {
+        this.rootWidth = rootWidth;
         this.rootHeight = rootHeight;
         this.doc = doc;
-        this.page = doc.getPage(0);
-        this.pageFormat = page.getMediaBox();
-        this.pageCount = 0;
-        initSettings(rootWidth);
-    }
-
-    private void initSettings(float rootWidth)
-    {
-        // calculate resize coefficient
-        resCoef = this.pageFormat.getWidth() / rootWidth;
-
-        // count the recent number of pages
-        pageCount = (int) Math.ceil(rootHeight * resCoef / this.pageFormat.getHeight());
-
-        // sets the top and bottom paddings for the output page
-        outputTopPadding = this.pageFormat.getHeight() / 100;
-        outputBottomPadding = this.pageFormat.getHeight() / 100;
+        this.pdf = new PDFOutput(rootWidth, rootHeight, doc);
+        
+        // sets the default top and bottom paddings for the output page
+        outputTopPadding = 50;
+        outputBottomPadding = 50;
     }
 
     @Override
@@ -376,7 +364,7 @@ public class PDFRenderer implements BoxRenderer
         // according to CSS property of elements in TREE
         createBreakAvoidTables();
 
-        // deletes all items bigger than argument*pageFormat.getHeight() in
+        // deletes all items bigger than argument*pdf.getPageHeight() in
         // avoidTable
         deleteAvoidsBiggerThan(0.8f);
 
@@ -392,9 +380,8 @@ public class PDFRenderer implements BoxRenderer
      */
     private void makePaging()
     {
-
-        pageEnd = pageFormat.getHeight();
-        while (breakTable.size() > 0 || pageEnd < rootHeight * resCoef)
+        float pageEnd = pdf.getPageHeight();
+        while (breakTable.size() > 0 || pageEnd < rootHeight)
         {
             // continues breaking until the breakTable is not empty
             // or the end of page is below the content limit
@@ -411,7 +398,7 @@ public class PDFRenderer implements BoxRenderer
                         makeBreakAt(avoidTable.get(i)[2]);
                         // sets new end of page according to height of the page
                         // in PDF document
-                        this.pageEnd += this.pageFormat.getHeight();
+                        pageEnd += pdf.getPageHeight();
                         nalezeno = true;
                     }
                 }
@@ -422,7 +409,7 @@ public class PDFRenderer implements BoxRenderer
                     makeBreakAt(pageEnd);
                     // sets new end of page according to height of the page in
                     // PDF document
-                    this.pageEnd += this.pageFormat.getHeight();
+                    pageEnd += pdf.getPageHeight();
                 }
             }
             // EOP is inside the interval in first record of breakTable
@@ -434,7 +421,7 @@ public class PDFRenderer implements BoxRenderer
                     makeBreakAt(pageEnd);
                     // sets new end of page according to height of the page in
                     // PDF document
-                    this.pageEnd += this.pageFormat.getHeight();
+                    pageEnd += pdf.getPageHeight();
                 }
                 else
                     makeBreakAt(breakTable.get(0)[2]);
@@ -457,18 +444,9 @@ public class PDFRenderer implements BoxRenderer
      */
     private void makePDF() throws IOException
     {
-        // creates PDF document with first blank page
-        initContentStream();
-
-        // inserts all needed blank pages to PDF document
-        insertNPagesPDFBox(pageCount);
-
-        // transforms all data from LIST data structure to Apache PDFBox format
-        // and writes it do PDF document
+        pdf.openStream();
         writeAllElementsToPDF();
-        
-        // close the content stream
-        closeContentStream();
+        pdf.close();
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -547,16 +525,16 @@ public class PDFRenderer implements BoxRenderer
                     // finds start of the interval
                     Node temp = getElementAbove(recNodeToInvestigate);
                     if (temp == null)
-                        tableRec[0] = recNodeToInvestigate.getParentNode().getElemY() * resCoef
+                        tableRec[0] = recNodeToInvestigate.getParentNode().getElemY()
                                 + recNodeToInvestigate.getParentNode().getPlusOffset();
                     else
-                        tableRec[0] = getLastBottom(temp) * resCoef;
+                        tableRec[0] = getLastBottom(temp);
 
                     // finds ends of the interval
-                    tableRec[1] = getFirstTop(recNodeToInvestigate) * resCoef;
+                    tableRec[1] = getFirstTop(recNodeToInvestigate);
 
                     // finds the break place
-                    tableRec[2] = recNodeToInvestigate.getElem().getAbsoluteContentY() * resCoef;
+                    tableRec[2] = recNodeToInvestigate.getElem().getAbsoluteContentY();
 
                     // inserts into breakTable
                     insertIntoTable(tableRec, breakTable);
@@ -569,23 +547,23 @@ public class PDFRenderer implements BoxRenderer
                     float[] tableRec = new float[4];
 
                     // finds start of the interval
-                    tableRec[0] = getLastBottom(recNodeToInvestigate) * resCoef;
+                    tableRec[0] = getLastBottom(recNodeToInvestigate);
 
                     // finds ends of the interval
                     Node temp = getElementBelow(recNodeToInvestigate);
                     if (temp != null)
                     {
-                        tableRec[1] = getFirstTop(temp) * resCoef;
+                        tableRec[1] = getFirstTop(temp);
                     }
                     else
                     {
-                        tableRec[1] = recNodeToInvestigate.getElemY() * resCoef
-                                + recNodeToInvestigate.getElemHeight() * resCoef;
+                        tableRec[1] = recNodeToInvestigate.getElemY()
+                                + recNodeToInvestigate.getElemHeight();
                     }
 
                     // finds the break place
-                    tableRec[2] = recNodeToInvestigate.getElem().getAbsoluteContentY() * resCoef
-                            + recNodeToInvestigate.getElem().getHeight() * resCoef;
+                    tableRec[2] = recNodeToInvestigate.getElem().getAbsoluteContentY()
+                            + recNodeToInvestigate.getElem().getHeight();
 
                     // inserts into breakTable
                     insertIntoTable(tableRec, breakTable);
@@ -601,15 +579,15 @@ public class PDFRenderer implements BoxRenderer
                     Node temp = getElementAbove(recNodeToInvestigate);
                     if (temp != null)
                     {
-                        tableRec[0] = getLastBottom(temp) * resCoef;
+                        tableRec[0] = getLastBottom(temp);
                     }
                     else
                     {
-                        tableRec[0] = recNodeToInvestigate.getElemY() * resCoef;
+                        tableRec[0] = recNodeToInvestigate.getElemY();
                     }
 
                     // finds ends of the interval
-                    tableRec[1] = getFirstTop(recNodeToInvestigate) * resCoef;
+                    tableRec[1] = getFirstTop(recNodeToInvestigate);
 
                     // finds the break place
                     tableRec[2] = tableRec[0] - 1;
@@ -625,18 +603,18 @@ public class PDFRenderer implements BoxRenderer
                     float[] tableRec = new float[4];
 
                     // finds start of the interval
-                    tableRec[0] = getLastBottom(recNodeToInvestigate) * resCoef;
+                    tableRec[0] = getLastBottom(recNodeToInvestigate);
 
                     // finds ends of the interval
                     Node temp = getElementBelow(recNodeToInvestigate);
                     if (temp != null)
                     {
-                        tableRec[1] = getFirstTop(temp) * resCoef;
+                        tableRec[1] = getFirstTop(temp);
                     }
                     else
                     {
-                        tableRec[1] = recNodeToInvestigate.getElemY() * resCoef
-                                + recNodeToInvestigate.getElemHeight() * resCoef;
+                        tableRec[1] = recNodeToInvestigate.getElemY()
+                                + recNodeToInvestigate.getElemHeight();
                     }
 
                     // finds the break place
@@ -653,10 +631,10 @@ public class PDFRenderer implements BoxRenderer
                     float[] tableRec = new float[4];
 
                     // finds start of the interval
-                    tableRec[0] = recNodeToInvestigate.getElem().getAbsoluteContentY() * resCoef - 1;
+                    tableRec[0] = recNodeToInvestigate.getElem().getAbsoluteContentY() - 1;
 
                     // finds ends of the interval
-                    tableRec[1] = tableRec[0] + recNodeToInvestigate.getElem().getHeight() * resCoef + 1;
+                    tableRec[1] = tableRec[0] + recNodeToInvestigate.getElem().getHeight() + 1;
 
                     // finds the break place
                     tableRec[2] = tableRec[0] - 1;
@@ -702,7 +680,7 @@ public class PDFRenderer implements BoxRenderer
     {
         for (int i = 0; i < avoidTable.size(); i++)
         {
-            if (avoidTable.get(i)[1] - avoidTable.get(i)[0] > biggerThan * pageFormat.getHeight())
+            if (avoidTable.get(i)[1] - avoidTable.get(i)[0] > biggerThan * pdf.getPageHeight())
                 avoidTable.remove(i);
         }
     }
@@ -719,7 +697,7 @@ public class PDFRenderer implements BoxRenderer
             if (avoidTable.get(i - 1)[1] > avoidTable.get(i)[0])
             {
                 // tests size of interval if it is not larger than allowed
-                if (avoidTable.get(i)[1] - avoidTable.get(i - 1)[0] > biggerThan * pageFormat.getHeight())
+                if (avoidTable.get(i)[1] - avoidTable.get(i - 1)[0] > biggerThan * pdf.getPageHeight())
                 {
                     avoidTable.remove(i);
                     i--;
@@ -791,15 +769,15 @@ public class PDFRenderer implements BoxRenderer
                 continue;
 
             // if the child is not above - continue
-            if (temp.getElemY() * resCoef + temp.getPlusOffset() + temp.getElemHeight() * resCoef
-                    + temp.getPlusHeight() > recentNode.getElemY() * resCoef + recentNode.getPlusOffset())
+            if (temp.getElemY() + temp.getPlusOffset() + temp.getElemHeight()
+                    + temp.getPlusHeight() > recentNode.getElemY() + recentNode.getPlusOffset())
                 continue;
 
             if (nodeX == null)
                 nodeX = temp;
-            else if (nodeX.getElemY() * resCoef + nodeX.getPlusOffset() + nodeX.getElemHeight() * resCoef
-                    + nodeX.getPlusHeight() <= temp.getElemY() * resCoef + temp.getPlusOffset()
-                            + temp.getElemHeight() * resCoef + temp.getPlusHeight())
+            else if (nodeX.getElemY() + nodeX.getPlusOffset() + nodeX.getElemHeight()
+                    + nodeX.getPlusHeight() <= temp.getElemY() + temp.getPlusOffset()
+                            + temp.getElemHeight() + temp.getPlusHeight())
             {
                 nodeX = temp;
             }
@@ -838,8 +816,8 @@ public class PDFRenderer implements BoxRenderer
                 continue;
 
             // new candidate is not under recent node
-            if (temp.getElemY() * resCoef + temp.getPlusOffset() < recentNode.getElemY() * resCoef
-                    + recentNode.getElemHeight() * resCoef + recentNode.getPlusHeight() + recentNode.getPlusOffset())
+            if (temp.getElemY() + temp.getPlusOffset() < recentNode.getElemY()
+                    + recentNode.getElemHeight() + recentNode.getPlusHeight() + recentNode.getPlusOffset())
             {
                 continue;
             }
@@ -849,7 +827,7 @@ public class PDFRenderer implements BoxRenderer
             // contains element with lower position then new candidate
             if (wantedNode == null)
                 wantedNode = temp;
-            else if (wantedNode.getElemY() * resCoef + wantedNode.getPlusOffset() >= temp.getElemY() * resCoef
+            else if (wantedNode.getElemY() + wantedNode.getPlusOffset() >= temp.getElemY()
                     + temp.getPlusOffset())
             {
                 wantedNode = temp;
@@ -871,7 +849,7 @@ public class PDFRenderer implements BoxRenderer
 
         List<Node> nChildren = recentNode.getAllChildren();
         if (nChildren == null)
-            return recentNode.getElemY() * resCoef + recentNode.getPlusOffset();
+            return recentNode.getElemY() + recentNode.getPlusOffset();
 
         float vysledekNeelem = Float.MAX_VALUE;
         float vysledekElem = Float.MAX_VALUE;
@@ -891,16 +869,16 @@ public class PDFRenderer implements BoxRenderer
 
             if (aktualni.isElem())
             {
-                if (aktualni.getElemY() * resCoef + aktualni.getPlusOffset() < vysledekElem)
+                if (aktualni.getElemY() + aktualni.getPlusOffset() < vysledekElem)
                 {
-                    vysledekElem = aktualni.getElemY() * resCoef + aktualni.getPlusOffset();
+                    vysledekElem = aktualni.getElemY() + aktualni.getPlusOffset();
                 }
             }
             else
             {
-                if (aktualni.getElemY() * resCoef + aktualni.getPlusOffset() < vysledekNeelem)
+                if (aktualni.getElemY() + aktualni.getPlusOffset() < vysledekNeelem)
                 {
-                    vysledekNeelem = aktualni.getElemY() * resCoef + aktualni.getPlusOffset();
+                    vysledekNeelem = aktualni.getElemY() + aktualni.getPlusOffset();
                 }
             }
         }
@@ -923,7 +901,7 @@ public class PDFRenderer implements BoxRenderer
         if (recentNode == null) return -1;
         List<Node> nChildren = recentNode.getAllChildren();
         if (nChildren == null)
-            return recentNode.getElemY() * resCoef + recentNode.getElemHeight() * resCoef
+            return recentNode.getElemY() + recentNode.getElemHeight()
                 + recentNode.getPlusOffset() + recentNode.getPlusHeight();
 
         float vysledekNeelem = -Float.MAX_VALUE;
@@ -943,16 +921,16 @@ public class PDFRenderer implements BoxRenderer
 
             if (aktualni.isElem())
             {
-                if (aktualni.getElemY() * resCoef + aktualni.getElemHeight() * resCoef + aktualni.getPlusOffset()
+                if (aktualni.getElemY() + aktualni.getElemHeight() + aktualni.getPlusOffset()
                         + aktualni.getPlusHeight() > vysledekElem)
-                    vysledekElem = aktualni.getElemY() * resCoef + aktualni.getElemHeight() * resCoef
+                    vysledekElem = aktualni.getElemY() + aktualni.getElemHeight()
                             + aktualni.getPlusOffset() + aktualni.getPlusHeight();
             }
             else
             {
-                if (aktualni.getElemY() * resCoef + aktualni.getElemHeight() * resCoef + aktualni.getPlusOffset()
+                if (aktualni.getElemY() + aktualni.getElemHeight() + aktualni.getPlusOffset()
                         + aktualni.getPlusHeight() > vysledekNeelem)
-                    vysledekNeelem = aktualni.getElemY() * resCoef + aktualni.getElemHeight() * resCoef
+                    vysledekNeelem = aktualni.getElemY() + aktualni.getElemHeight()
                             + aktualni.getPlusOffset() + aktualni.getPlusHeight();
             }
         }
@@ -970,7 +948,7 @@ public class PDFRenderer implements BoxRenderer
      */
     private void makeBreakAt(float line1)
     {
-        if (line1 > rootHeight * resCoef || line1 < 0)
+        if (line1 > rootHeight || line1 < 0)
             return;
 
         float spaceBetweenLines = 0;
@@ -995,8 +973,8 @@ public class PDFRenderer implements BoxRenderer
                 myOpen.addAll(myChildren);
             }
 
-            float startOfTheElement = myRecentNode.getElemY() * resCoef + myRecentNode.getPlusOffset();
-            float endOfTheElement = startOfTheElement + myRecentNode.getElemHeight() * resCoef
+            float startOfTheElement = myRecentNode.getElemY() + myRecentNode.getPlusOffset();
+            float endOfTheElement = startOfTheElement + myRecentNode.getElemHeight()
                     + myRecentNode.getPlusHeight();
 
             // sets the line2 variable to match the top of the element from set
@@ -1028,8 +1006,8 @@ public class PDFRenderer implements BoxRenderer
                 myOpen2.addAll(myChildren2);
             }
 
-            float startOfTheElement = myRecentNode2.getElemY() * resCoef + myRecentNode2.getPlusOffset();
-            float endOfTheElement = startOfTheElement + myRecentNode2.getElemHeight() * resCoef
+            float startOfTheElement = myRecentNode2.getElemY() + myRecentNode2.getPlusOffset();
+            float endOfTheElement = startOfTheElement + myRecentNode2.getElemHeight()
                     + myRecentNode2.getPlusHeight();
 
             // counts the line3
@@ -1046,7 +1024,7 @@ public class PDFRenderer implements BoxRenderer
         }
 
         // counts distance between lines
-        spaceBetweenLines = (float) (pageFormat.getHeight() * Math.ceil((line1 - 1) / pageFormat.getHeight()) - line3);
+        spaceBetweenLines = (float) (pdf.getPageHeight() * Math.ceil((line1 - 1) / pdf.getPageHeight()) - line3);
 
         // goes through TREE and increases height or moves element
         List<Node> myOpen3 = new ArrayList<>(2);
@@ -1063,9 +1041,9 @@ public class PDFRenderer implements BoxRenderer
             }
 
             // counts start and end of the element
-            float startOfTheElement = myRecentNode.getElemY() * resCoef + myRecentNode.getPlusOffset();
-            float endOfTheElement = startOfTheElement + myRecentNode.getElemHeight() * resCoef
-                    + myRecentNode.getPlusHeight() - 10 * resCoef;
+            float startOfTheElement = myRecentNode.getElemY() + myRecentNode.getPlusOffset();
+            float endOfTheElement = startOfTheElement + myRecentNode.getElemHeight()
+                    + myRecentNode.getPlusHeight() - 10; //TODO
 
             // whole element if above the line2 - nothing happens
             if (endOfTheElement <= line2)
@@ -1075,9 +1053,9 @@ public class PDFRenderer implements BoxRenderer
             // - is ElementBox
             // - is crossed by the line2
             // - has got at least 2 children
-            else if (myRecentNode.isElem() && myRecentNode.getElemY() * resCoef + myRecentNode.getPlusOffset() < line2
-                    && myRecentNode.getElemY() * resCoef + myRecentNode.getPlusOffset()
-                            + myRecentNode.getElemHeight() * resCoef + myRecentNode.getPlusHeight() >= line2
+            else if (myRecentNode.isElem() && myRecentNode.getElemY() + myRecentNode.getPlusOffset() < line2
+                    && myRecentNode.getElemY() * myRecentNode.getPlusOffset()
+                            + myRecentNode.getElemHeight() * myRecentNode.getPlusHeight() >= line2
                     && myRecentNode.getAllChildren() != null)
             {
                 myRecentNode.addPlusHeight(outputTopPadding + spaceBetweenLines + outputBottomPadding);
@@ -1092,11 +1070,10 @@ public class PDFRenderer implements BoxRenderer
         }
 
         // updates height of the original document
-        this.rootHeight += (outputTopPadding + spaceBetweenLines + outputBottomPadding) / resCoef;
+        rootHeight += outputTopPadding + spaceBetweenLines + outputBottomPadding;
+        pdf.setRootHeight(rootHeight);
         // updates values in all records in avoidTable and breakTable
         updateTables(outputTopPadding + spaceBetweenLines + outputBottomPadding);
-        // update count the number of pages
-        this.pageCount = (int) Math.ceil(rootHeight * resCoef / pageFormat.getHeight());
     }
 
     ////////////////////////////////////////////////////////////////////////
@@ -1117,9 +1094,9 @@ public class PDFRenderer implements BoxRenderer
         BorderRadius borRad = new BorderRadius();
         boolean isBorderRad = false;
         boolean transf = false;
-        for (int i = 0; i < pageCount; i++)
+        for (int i = 0; i < pdf.getPageCount(); i++)
         {
-            changeCurrentPageToPDFBox(i);
+            pdf.setCurrentPage(i);
 
             List<Node> elementsToWriteToPDF = new ArrayList<>(2);
             elementsToWriteToPDF.add(rootNodeOfList);
@@ -1145,7 +1122,7 @@ public class PDFRenderer implements BoxRenderer
                     else
                     {
                         if (transf)
-                            content.restoreGraphicsState();
+                            pdf.restoreGraphicsState();
                         transf = false;
                     }
 
@@ -1173,7 +1150,7 @@ public class PDFRenderer implements BoxRenderer
                         if (value1 != null || value2 != null || value3 != null || value4 != null)
                         {
                             isBorderRad = true;
-                            borRad.setCornerRadius(value2, value1, value4, value3, elem, resCoef);
+                            borRad.setCornerRadius(value2, value1, value4, value3, elem);
                         }
                         else
                         {
@@ -1181,116 +1158,28 @@ public class PDFRenderer implements BoxRenderer
                             borRad = new BorderRadius(); // calculating corner radiuses
                         }
                         
-                        CSSProperty.BackgroundImage backgrd = elem.getStyle().getProperty("background-image");
-
-                        if (backgrd == CSSProperty.BackgroundImage.gradient)
-                        {
-                            TermFunction.Gradient values = elem.getStyle().getValue(TermFunction.Gradient.class,
-                                    "background-image");
-
-                            if (values instanceof TermFunction.LinearGradient)
-                            {
-                                linearGrad = true;
-
-                                double radAgl;
-                                float degAgl;
-
-                                // get angle of gradient line
-                                if (((TermFunction.LinearGradient) values).getAngle() != null)
-                                {
-                                    radAgl = dec.getAngle(((TermFunction.LinearGradient) values).getAngle());
-                                    degAgl = (float) Math.toDegrees(radAgl);
-                                }
-                                else
-                                    degAgl = 180; // implicitne je 180deg
-                                LinearGradient linGrad = new LinearGradient();
-                                // calcutaling coordinates of starting points
-                                // and ending points
-                                linGrad.createGradLinePoints(degAgl, bounds.width, bounds.height);
-                                // create color stops
-                                List<ColorStop> colorstops = ((TermFunction.LinearGradient) values).getColorStops();
-                                if (colorstops != null)
-                                {
-                                    linGrad.createColorStopsLength(colorstops, dec,
-                                            ((TermFunction.LinearGradient) values).isRepeating());
-
-                                    float[] newStartXY = new float[2];
-                                    newStartXY = transXYtoPDF(elem, (float) (linGrad.x1 * resCoef),
-                                            (float) (linGrad.y1 * resCoef), currentNode.getTreeEq().getPlusOffset(),
-                                            currentNode.getTreeEq().getPlusHeight(), i);
-
-                                    float[] newEndXY = new float[2];
-                                    newEndXY = transXYtoPDF(elem, (float) (linGrad.x2 * resCoef),
-                                            (float) (linGrad.y2 * resCoef), currentNode.getTreeEq().getPlusOffset(),
-                                            currentNode.getTreeEq().getPlusHeight(), i);
-                                    // create linear gradient
-                                    shading = linGrad.createLinearGrad(newStartXY[0], newStartXY[1], newEndXY[0],
-                                            newEndXY[1]);
-                                }
-                            }
-                            else if (values instanceof TermFunction.RadialGradient)
-                            {
-                                radialGrad = true;
-
-                                RadialGradient radGrad = new RadialGradient();
-                                // gradient shape
-                                radGrad.setShape(((TermFunction.RadialGradient) values).getShape());
-                                // center point of gradient
-                                radGrad.setGradientCenter(((TermFunction.RadialGradient) values).getPosition(), dec,
-                                        bounds.width, bounds.height);
-                                // radius
-                                TermLengthOrPercent[] size = ((TermFunction.RadialGradient) values).getSize();
-                                if (size != null)
-                                {
-                                    radGrad.setRadiusFromSizeValue(size, dec, bounds.x, bounds.y, bounds.width,
-                                            bounds.height);
-                                }
-
-                                TermIdent sizeIdent = ((TermFunction.RadialGradient) values).getSizeIdent();
-                                if (sizeIdent != null)
-                                {
-                                    radGrad.setRadiusFromSizeIdent(sizeIdent, bounds.width, bounds.height);
-                                }
-                                // color stops
-                                List<ColorStop> colorstops = ((TermFunction.RadialGradient) values).getColorStops();
-                                if (colorstops != null)
-                                {
-                                    radGrad.createColorStopsLength(colorstops, dec);
-
-                                    float[] newXY = new float[2];
-                                    newXY = transXYtoPDF(elem, radGrad.cx * resCoef, radGrad.cy * resCoef,
-                                            currentNode.getTreeEq().getPlusOffset(),
-                                            currentNode.getTreeEq().getPlusHeight(), i);
-
-                                    AffineTransform moveToCenter = new AffineTransform();
-
-                                    if (radGrad.shape.equals("ellipse"))
-                                    {
-                                        moveToCenter = radGrad.createTransformForEllipseGradient(newXY[0], newXY[1]);
-                                    }
-
-                                    radMatrix = new Matrix(moveToCenter);
-                                    if (radGrad.err)
-                                        shading = null;
-                                    else // creating radial gradient
-                                        shading = radGrad.createRadialGrad(newXY[0], newXY[1],
-                                                (float) (radGrad.radc * resCoef));
-                                } // end if colorstops != null
-                            } // end radial-gradient
-                        } // end gradient
                     }
 
+                    BackgroundDecoder bg = findBackgroundSource(elem);
+                    if (bg != null)
+                    {
+                        // color background
+                        if (bg.getBgcolor() != null) 
+                        {
+                        }
+                    }
+                    
                     // draws colored background
                     if (!isBorderRad)
                         drawBgToElem(elem, i, currentNode.getTreeEq().getPlusOffset(),
                             currentNode.getTreeEq().getPlusHeight(), radialGrad, linearGrad, shading, radMatrix);
 
                     // draws background image
-                    if (elem.getBackgroundImages() != null && elem.getBackgroundImages().size() > 0)
+                    /*if (elem.getBackgroundImages() != null && elem.getBackgroundImages().size() > 0)
                     {
                         insertBgImg(elem, i, currentNode.getTreeEq().getPlusOffset(),
                                 currentNode.getTreeEq().getPlusHeight(), pdfFilter, isBorderRad, borRad);
-                    }
+                    }*/
 
                     // draws border
                     drawBorder(elem, i, currentNode.getTreeEq().getPlusOffset(),
@@ -1304,9 +1193,9 @@ public class PDFRenderer implements BoxRenderer
                     // element more then 60 %
                     // on the right side
                     Node parent = currentNode.getTreeEq().getParentNode().getParentNode();
-                    float parentRightEndOfElement = (parent.getElemX() + parent.getElemWidth()) * resCoef;
-                    float recentRightEndOfElement = (currentNode.getElemX() + currentNode.getElemWidth()) * resCoef;
-                    float widthRecentElem = currentNode.getElemWidth() * resCoef;
+                    float parentRightEndOfElement = (parent.getElemX() + parent.getElemWidth());
+                    float recentRightEndOfElement = (currentNode.getElemX() + currentNode.getElemWidth());
+                    float widthRecentElem = currentNode.getElemWidth();
 
                     if (parentRightEndOfElement - recentRightEndOfElement > -widthRecentElem * 0.6)
                     {
@@ -1380,43 +1269,6 @@ public class PDFRenderer implements BoxRenderer
     }
 
     /**
-     * Draw an background, which is represented by radial-gradient() function
-     * 
-     * @author Hoang Duong Nguyen
-     * @returns 0 for inserted OK, -1 for exception occurs
-     * @param lineWidth
-     *            the width of the border line
-     * @param shading
-     *            radial gradient to paint
-     * @param x
-     *            x-axis of the element, which contains radial gradient
-     *            background
-     * @param y
-     *            y-axis of the element
-     * @param width
-     *            width of the element
-     * @param height
-     *            height of the element
-     * @param matrix
-     *            matrix for the transformation from circle to eclipse gradient
-     * @throws IOException 
-     */
-    private void drawBgGrad(float lineWidth, PDShadingType3 shading, float x, float y, float width, float height,
-            Matrix matrix) throws IOException
-    {
-        if (shading == null)
-            return;
-        content.saveGraphicsState();
-        content.setLineWidth(lineWidth);
-        content.addRect(x, y, width, height);
-        content.clip();
-        content.transform(matrix);
-        content.shadingFill(shading);
-        content.fill();
-        content.restoreGraphicsState();
-    }
-
-    /**
      * Transform the CSS coordinates to PDF coordinates.
      * 
      * @return an array, which contains new x-axis([0]) and y-axis([1])
@@ -1438,12 +1290,12 @@ public class PDFRenderer implements BoxRenderer
     {
         float[] xy = new float[2];
 
-        float paddingBottom = elem.getPadding().bottom * resCoef;
-        float paddingLeft = elem.getPadding().left * resCoef;
+        float paddingBottom = elem.getPadding().bottom;
+        float paddingLeft = elem.getPadding().left;
 
-        xy[0] = elem.getAbsoluteContentX() * resCoef - paddingLeft + x;
-        xy[1] = (pageFormat.getHeight() - (elem.getAbsoluteContentY() * resCoef + plusOffset)
-                + i * pageFormat.getHeight() - elem.getContentHeight() * resCoef - plusHeight - paddingBottom) + y;
+        xy[0] = elem.getAbsoluteContentX() * - paddingLeft + x;
+        xy[1] = (pdf.getPageHeight() - (elem.getAbsoluteContentY() + plusOffset)
+                + i * pdf.getPageHeight() - elem.getContentHeight() - plusHeight - paddingBottom) + y;
         return xy;
     }
 
@@ -1484,7 +1336,7 @@ public class PDFRenderer implements BoxRenderer
                 oy = bounds.height / 2;
             }
 
-            float newXY[] = transXYtoPDF(elem, ox * resCoef, oy * resCoef, recentNode.getTreeEq().getPlusOffset(),
+            float newXY[] = transXYtoPDF(elem, ox, oy, recentNode.getTreeEq().getPlusOffset(),
                     recentNode.getTreeEq().getPlusHeight(), i);
             ox = (int) newXY[0];
             oy = (int) newXY[1];
@@ -1560,22 +1412,21 @@ public class PDFRenderer implements BoxRenderer
                                 bounds.width);
                         float ty = dec.getLength(((TermFunction.Translate) term).getTranslateY(), false, 0, 0,
                                 bounds.height);
-                        ret.translate(tx * resCoef, -ty * resCoef); // - because of the different coordinate system in
-                                                                    // PDF; * rescoef because of the page ratio
+                        ret.translate(tx, -ty); // - because of the different coordinate system in PDF
                         transformed = true;
                     }
                     else if (term instanceof TermFunction.TranslateX)
                     {
                         float tx = dec.getLength(((TermFunction.TranslateX) term).getTranslate(), false, 0, 0,
                                 bounds.width);
-                        ret.translate(tx * resCoef, 0.0);
+                        ret.translate(tx, 0.0);
                         transformed = true;
                     }
                     else if (term instanceof TermFunction.TranslateY)
                     {
                         float ty = dec.getLength(((TermFunction.TranslateY) term).getTranslate(), false, 0, 0,
                                 bounds.height);
-                        ret.translate(0.0, -ty * resCoef);
+                        ret.translate(0.0, -ty);
                         transformed = true;
                     }
                 }
@@ -1583,9 +1434,9 @@ public class PDFRenderer implements BoxRenderer
                 if (transformed)
                 {
                     if (transf)
-                        content.restoreGraphicsState();
-                    content.saveGraphicsState();
-                    drawTransformPDF(ret, ox, oy);
+                        pdf.restoreGraphicsState();
+                    pdf.saveGraphicsState();
+                    pdf.addTransform(ret, ox, oy);
                     return true;
                 }
                 else
@@ -1596,31 +1447,6 @@ public class PDFRenderer implements BoxRenderer
         }
         else
             return false; // not applicable for this element type
-    }
-
-    /**
-     * Draw the transformation to PDF.
-     * 
-     * @author Hoang Duong Nguyen
-     * @returns 0 for inserted OK, -1 for exception occurs
-     * @param aff
-     *            class with information of transform
-     * @param ox
-     *            x-axis of the element
-     * @param oy
-     *            y-axis of the element
-     * @param transf
-     *            flag, which determines if the transform is set for the element
-     * @param type
-     *            type of the transform property
-     * @throws IOException 
-     */
-    private void drawTransformPDF(AffineTransform aff, float ox, float oy) throws IOException
-    {
-        Matrix matrix = new Matrix(aff);
-        content.transform(Matrix.getTranslateInstance(ox, oy));
-        content.transform(matrix);
-        content.transform(Matrix.getTranslateInstance(-ox, -oy));
     }
 
     /**
@@ -1639,19 +1465,19 @@ public class PDFRenderer implements BoxRenderer
                 if (rimg.getImage() != null && rimg.getImage() instanceof BitmapImage)
                 {
                     BufferedImage img = ((BitmapImage) rimg.getImage()).getBufferedImage();
-                    float pageStart = i * pageFormat.getHeight();
-                    float pageEnd = (i + 1) * pageFormat.getHeight();
+                    float pageStart = i * pdf.getPageHeight();
+                    float pageEnd = (i + 1) * pdf.getPageHeight();
     
                     Rectangle cb = ((Box) box).getAbsoluteContentBounds();
-                    if (img != null && cb.y * resCoef < pageEnd
-                            && (cb.y + img.getHeight()) * resCoef + plusHeight + plusOffset > pageStart)
+                    if (img != null && cb.y < pageEnd
+                            && (cb.y + img.getHeight()) + plusHeight + plusOffset > pageStart)
                     {
                         img = filter.filterImg(img);
                         // calculates resized coordinates in CSSBox form
-                        float startX = cb.x * resCoef;
-                        float startY = (cb.y * resCoef + plusOffset + plusHeight) - i * pageFormat.getHeight(); // y position in the page
-                        float width = (float) cb.getWidth() * resCoef;
-                        float height = (float) cb.getHeight() * resCoef + plusHeight;
+                        float startX = cb.x;
+                        float startY = (cb.y + plusOffset + plusHeight) - i * pdf.getPageHeight(); // y position in the page
+                        float width = (float) cb.getWidth();
+                        float height = (float) cb.getHeight() + plusHeight;
                         if (isBorderRad)
                         { // if border radius is set
                             float radiusX = Math.max(Math.max(borRad.topLeftX, borRad.topRightX),
@@ -1661,7 +1487,7 @@ public class PDFRenderer implements BoxRenderer
                             img = makeImgRadiusCorner(img, radiusX, radiusY);
                         }
                         // inserts image
-                        insertImagePDFBox(img, startX, startY, width, height);
+                        pdf.insertImage(img, startX, startY, width, height);
                     }
                 }
             }
@@ -1675,7 +1501,7 @@ public class PDFRenderer implements BoxRenderer
     private void insertBgImg(ElementBox elem, int i, float plusOffset, float plusHeight, Filter filter,
             boolean isBorderRad, BorderRadius borRad) throws IOException
     {
-        if (elem.getBackgroundImages() != null)
+        /*if (elem.getBackgroundImages() != null)
         {
             final BackgroundBitmap bitmap = new BackgroundBitmap(elem);
             for (BackgroundImage img : elem.getBackgroundImages())
@@ -1690,18 +1516,18 @@ public class PDFRenderer implements BoxRenderer
                 //final Rectangle bg = elem.getAbsoluteBorderBounds();
                 //g.drawImage(bitmap.getBufferedImage(), Math.round(bg.x), Math.round(bg.y), null);
                 BufferedImage img = bitmap.getBufferedImage();
-                float pageStart = i * pageFormat.getHeight();
-                float pageEnd = (i + 1) * pageFormat.getHeight();
-                if (img != null && elem.getAbsoluteContentY() * resCoef + plusOffset < pageEnd
-                        && (elem.getAbsoluteContentY() + img.getHeight()) * resCoef + plusOffset + plusHeight > pageStart)
+                float pageStart = i * pdf.getPageHeight();
+                float pageEnd = (i + 1) * pdf.getPageHeight();
+                if (img != null && elem.getAbsoluteContentY() + plusOffset < pageEnd
+                        && (elem.getAbsoluteContentY() + img.getHeight()) + plusOffset + plusHeight > pageStart)
                 {
                     img = filter.filterImg(img);
                     // calculates resized coordinates in CSSBox form
                     Rectangle bb = elem.getAbsoluteBorderBounds();
-                    float startX = bb.x * resCoef;
-                    float startY = bb.y * resCoef + plusOffset - i * pageFormat.getHeight();
-                    float width = img.getWidth() * resCoef;
-                    float height = img.getHeight() * resCoef;
+                    float startX = bb.x;
+                    float startY = bb.y + plusOffset - i * pdf.getPageHeight();
+                    float width = img.getWidth();
+                    float height = img.getHeight();
 
                     // correction of long backgrounds
                     if (height > 5 * plusHeight) height += plusHeight;
@@ -1720,7 +1546,7 @@ public class PDFRenderer implements BoxRenderer
                     insertImagePDFBox(img, startX, startY, width, height);
                 }
             }
-        }
+        }*/
     }
 
     /**
@@ -1738,51 +1564,51 @@ public class PDFRenderer implements BoxRenderer
         {
             // counts the distance between top of the document and the start/end
             // of the page
-            final float pageStart = i * pageFormat.getHeight();
-            final float pageEnd = (i + 1) * pageFormat.getHeight();
+            final float pageStart = i * pdf.getPageHeight();
+            final float pageEnd = (i + 1) * pdf.getPageHeight();
 
             // checks if border is not completely out of page
-            if (elem.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
-                    || (elem.getAbsoluteContentY() + plusOffset + elem.getContentHeight()) * resCoef + plusHeight
+            if (elem.getAbsoluteContentY() + plusOffset > pageEnd
+                    || (elem.getAbsoluteContentY() + plusOffset + elem.getContentHeight()) + plusHeight
                             + plusOffset < pageStart)
                 return;
 
             // calculates resized X,Y coordinates in CSSBox form
-            final float border_x = elem.getAbsoluteContentX() * resCoef;
-            final float border_y = pageFormat.getHeight() - (elem.getAbsoluteContentY() * resCoef + plusOffset)
-                    + i * pageFormat.getHeight() - elem.getContentHeight() * resCoef - plusHeight;
+            final float border_x = elem.getAbsoluteContentX();
+            final float border_y = pdf.getPageHeight() - (elem.getAbsoluteContentY() + plusOffset)
+                    + i * pdf.getPageHeight() - elem.getContentHeight() - plusHeight;
 
             // calculates the padding for each side
-            final float paddingTop = elem.getPadding().top * resCoef;
-            final float paddingRight = elem.getPadding().right * resCoef;
-            final float paddingBottom = elem.getPadding().bottom * resCoef;
-            final float paddingLeft = elem.getPadding().left * resCoef;
+            final float paddingTop = elem.getPadding().top;
+            final float paddingRight = elem.getPadding().right;
+            final float paddingBottom = elem.getPadding().bottom;
+            final float paddingLeft = elem.getPadding().left;
 
             // calculates the border size for each side
-            final float borderTopSize = border.top * resCoef;
-            final float borderRightSize = border.right * resCoef;
-            final float borderBottomSize = border.bottom * resCoef;
-            final float borderLeftSize = border.left * resCoef;
+            final float borderTopSize = border.top;
+            final float borderRightSize = border.right;
+            final float borderBottomSize = border.bottom;
+            final float borderLeftSize = border.left;
 
             // calculate the element size
-            final float elemWidth = elem.getContentWidth() * resCoef;
-            final float elemHeight = elem.getContentHeight() * resCoef + plusHeight;
+            final float elemWidth = elem.getContentWidth();
+            final float elemHeight = elem.getContentHeight() + plusHeight;
 
             float bX, bY, bWidth, bHeight;
             // calculating points for creating border radius
             if (isBorderRad)
             {
                 ax = border_x + borRad.topLeftX - paddingLeft - borderLeftSize;
-                ay = border_y + elem.getAbsoluteBorderBounds().height * resCoef - paddingTop - borderTopSize;
-                bx = border_x + elem.getAbsoluteBorderBounds().width * resCoef - borRad.topRightX - paddingRight
+                ay = border_y + elem.getAbsoluteBorderBounds().height - paddingTop - borderTopSize;
+                bx = border_x + elem.getAbsoluteBorderBounds().width - borRad.topRightX - paddingRight
                         - borderRightSize;
                 by = ay;
-                cx = border_x + elem.getAbsoluteBorderBounds().width * resCoef - paddingRight - borderRightSize;
-                cy = border_y + elem.getAbsoluteBorderBounds().height * resCoef - borRad.topRightY - paddingTop
+                cx = border_x + elem.getAbsoluteBorderBounds().width - paddingRight - borderRightSize;
+                cy = border_y + elem.getAbsoluteBorderBounds().height - borRad.topRightY - paddingTop
                         - borderTopSize;
                 dx = cx;
                 dy = border_y + borRad.botRightY - paddingBottom - borderBottomSize;
-                ex = border_x + elem.getAbsoluteBorderBounds().width * resCoef - borRad.botRightX - paddingRight
+                ex = border_x + elem.getAbsoluteBorderBounds().width - borRad.botRightX - paddingRight
                         - borderRightSize;
                 ey = border_y - paddingBottom - borderBottomSize;
                 fx = border_x + borRad.botLeftX - paddingLeft - borderLeftSize;
@@ -1790,12 +1616,12 @@ public class PDFRenderer implements BoxRenderer
                 gx = border_x - paddingLeft - borderLeftSize;
                 gy = border_y + borRad.botLeftY - paddingBottom - borderBottomSize;
                 hx = gx;
-                hy = border_y + elem.getAbsoluteBorderBounds().height * resCoef - borRad.topLeftY - borderLeftSize
+                hy = border_y + elem.getAbsoluteBorderBounds().height - borRad.topLeftY - borderLeftSize
                         - paddingLeft;
-                if (elem.getBgcolor() != null) drawBgInsideBorderRadius(elem,
+                /*if (elem.getBgcolor() != null) drawBgInsideBorderRadius(elem,
                         borderTopSize == 0 ? 0 : borderTopSize + 1, borderRightSize == 0 ? 0 : borderRightSize + 1,
                         borderBottomSize == 0 ? 0 : borderBottomSize + 1, borderLeftSize == 0 ? 0 : borderLeftSize + 1,
-                        borRad);
+                        borRad);*/
                 drawBorderRadius(elem, borderTopSize, borderRightSize, borderBottomSize, borderLeftSize, borRad);
             }
             else
@@ -1807,7 +1633,7 @@ public class PDFRenderer implements BoxRenderer
                     bY = border_y - borderBottomSize - paddingBottom;
                     bWidth = borderLeftSize;
                     bHeight = elemHeight + borderTopSize + borderBottomSize + paddingTop + paddingBottom;
-                    drawRectanglePDFBox(borderLeftSize, getBorderColor(elem, "left"), bX, bY, bWidth, bHeight);
+                    pdf.drawRectangle(borderLeftSize, getBorderColor(elem, "left"), bX, bY, bWidth, bHeight);
                 }
 
                 // right border
@@ -1817,7 +1643,7 @@ public class PDFRenderer implements BoxRenderer
                     bY = border_y - borderBottomSize - paddingBottom;
                     bWidth = borderRightSize;
                     bHeight = elemHeight + borderTopSize + borderBottomSize + paddingTop + paddingBottom;
-                    drawRectanglePDFBox(borderRightSize, getBorderColor(elem, "right"), bX, bY, bWidth, bHeight);
+                    pdf.drawRectangle(borderRightSize, getBorderColor(elem, "right"), bX, bY, bWidth, bHeight);
                 }
 
                 // top border
@@ -1827,7 +1653,7 @@ public class PDFRenderer implements BoxRenderer
                     bY = border_y + elemHeight + paddingTop;
                     bWidth = elemWidth + borderLeftSize + borderRightSize + paddingLeft + paddingRight;
                     bHeight = borderTopSize;
-                    drawRectanglePDFBox(borderTopSize, getBorderColor(elem, "top"), bX, bY, bWidth, bHeight);
+                    pdf.drawRectangle(borderTopSize, getBorderColor(elem, "top"), bX, bY, bWidth, bHeight);
                 }
 
                 // bottom border
@@ -1837,7 +1663,7 @@ public class PDFRenderer implements BoxRenderer
                     bY = border_y - borderBottomSize - paddingBottom;
                     bWidth = elemWidth + borderLeftSize + borderRightSize + paddingLeft + paddingRight;
                     bHeight = borderBottomSize;
-                    drawRectanglePDFBox(borderBottomSize, getBorderColor(elem, "bottom"), bX, bY, bWidth, bHeight);
+                    pdf.drawRectangle(borderBottomSize, getBorderColor(elem, "bottom"), bX, bY, bWidth, bHeight);
                 }
             }
         }
@@ -1901,7 +1727,7 @@ public class PDFRenderer implements BoxRenderer
     private void drawBgInsideBorderRadius(ElementBox elem, float bTopSize, float bRightSize, float bBotSize,
             float bLeftSize, BorderRadius borRad) throws IOException
     {
-        final float bezier = 0.551915024494f;
+        /*final float bezier = 0.551915024494f;
         content.setLineWidth(1);
         setNonStrokingColor(elem.getBgcolor());
         setStrokingColor(elem.getBgcolor());
@@ -1919,7 +1745,7 @@ public class PDFRenderer implements BoxRenderer
         content.curveTo1((gx + bLeftSize + hx + bLeftSize) / 2, (gy + hy) / 2, hx + bLeftSize, hy);
         content.curveTo(hx + bLeftSize, hy + bezier * borRad.topLeftY, ax - bezier * borRad.topLeftX, ay - bTopSize,
                 ax, ay - bTopSize);
-        content.fillAndStroke(); // insert background and colour of border
+        content.fillAndStroke(); // insert background and colour of border*/
     }
 
     /**
@@ -2003,43 +1829,43 @@ public class PDFRenderer implements BoxRenderer
         }
 
         // calculates the start and the end of current page
-        float pageStart = i * pageFormat.getHeight();
-        float pageEnd = (i + 1) * pageFormat.getHeight();
+        float pageStart = i * pdf.getPageHeight();
+        float pageEnd = (i + 1) * pdf.getPageHeight();
 
         // checks if the element if completely out of page
-        if (elem.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
-                || (elem.getAbsoluteContentY() + elem.getContentHeight()) * resCoef + plusOffset
+        if (elem.getAbsoluteContentY() + plusOffset > pageEnd
+                || (elem.getAbsoluteContentY() + elem.getContentHeight()) + plusOffset
                         + plusHeight < pageStart)
             return;
 
         // calculates the padding
-        float paddingTop = elem.getPadding().top * resCoef;
-        float paddingRight = elem.getPadding().right * resCoef;
-        float paddingBottom = elem.getPadding().bottom * resCoef;
-        float paddingLeft = elem.getPadding().left * resCoef;
+        float paddingTop = elem.getPadding().top;
+        float paddingRight = elem.getPadding().right;
+        float paddingBottom = elem.getPadding().bottom;
+        float paddingLeft = elem.getPadding().left;
 
-        float border_x = elem.getAbsoluteContentX() * resCoef - paddingLeft;
-        float border_y = pageFormat.getHeight() - (elem.getAbsoluteContentY() * resCoef + plusOffset)
-                + i * pageFormat.getHeight() - elem.getContentHeight() * resCoef - plusHeight - paddingBottom;
+        float border_x = elem.getAbsoluteContentX() - paddingLeft;
+        float border_y = pdf.getPageHeight() - (elem.getAbsoluteContentY() + plusOffset)
+                + i * pdf.getPageHeight() - elem.getContentHeight() - plusHeight - paddingBottom;
         if (radialGrad)
         { // if the background is radial gradient
             drawBgGrad(0, shading, border_x, border_y,
-                    (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
-                    elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight, matrix);
+                    (elem.getContentWidth()) + paddingLeft + paddingRight,
+                    elem.getContentHeight() + paddingTop + paddingBottom + plusHeight, matrix);
 
         }
         else if (linearGrad)
         { // if is linear gradient
             drawBgGrad(0, shading, border_x, border_y,
-                    (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
-                    elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight, matrix);
+                    (elem.getContentWidth()) + paddingLeft + paddingRight,
+                    elem.getContentHeight() + paddingTop + paddingBottom + plusHeight, matrix);
 
         }
         else
         {
-            drawRectanglePDFBox(0, elem.getBgcolor(), border_x, border_y,
-                    (elem.getContentWidth()) * resCoef + paddingLeft + paddingRight,
-                    elem.getContentHeight() * resCoef + paddingTop + paddingBottom + plusHeight);
+            pdf.drawRectangle(0, elem.getBgcolor(), border_x, border_y,
+                    (elem.getContentWidth()) + paddingLeft + paddingRight,
+                    elem.getContentHeight() + paddingTop + paddingBottom + plusHeight);
         }
     }
 
@@ -2051,20 +1877,20 @@ public class PDFRenderer implements BoxRenderer
     {
         // counts the distance between top of the document and the start/end of
         // the page
-        float pageStart = i * pageFormat.getHeight();
-        float pageEnd = (i + 1) * pageFormat.getHeight();
+        float pageStart = i * pdf.getPageHeight();
+        float pageEnd = (i + 1) * pdf.getPageHeight();
 
         // checks if the whole text is out of the page
-        if (text.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
-                || (text.getAbsoluteContentY() + text.getHeight()) * resCoef + plusOffset < pageStart)
+        if (text.getAbsoluteContentY() + plusOffset > pageEnd
+                || (text.getAbsoluteContentY() + text.getHeight()) + plusOffset < pageStart)
             return;
 
         // gets data describing the text
         PDFVisualContext ctx = (PDFVisualContext) text.getVisualContext();
-        float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef);
+        float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize());
         boolean isBold = ctx.getFontInfo().isBold();
         boolean isUnderlined = text.getEfficientTextDecoration().contains(CSSProperty.TextDecoration.UNDERLINE);
-        float letterSpacing = CSSUnits.pixels(ctx.getLetterSpacing() * resCoef);
+        float letterSpacing = CSSUnits.pixels(ctx.getLetterSpacing());
         Color color = ctx.getColor();
         PDFont font = ctx.getFont();
         
@@ -2072,8 +1898,8 @@ public class PDFRenderer implements BoxRenderer
         final float leading = 2f * fontSize;
 
         // compute the resized coordinates
-        float startX = text.getAbsoluteContentX() * resCoef;
-        float startY = (text.getAbsoluteContentY() * resCoef + plusOffset) % pageFormat.getHeight();
+        float startX = text.getAbsoluteContentX();
+        float startY = (text.getAbsoluteContentY() + plusOffset) % pdf.getPageHeight();
 
         // write to PDF
         if (text.getWordSpacing() == null && text.getExtraWidth() == 0)
@@ -2102,11 +1928,11 @@ public class PDFRenderer implements BoxRenderer
             borderULine.setWidth(0);
             link.setBorderStyle(borderULine);
             
-            final float sy = pageFormat.getHeight() - startY;
+            final float sy = pdf.getPageHeight() - startY;
             PDRectangle pdRectangle = new PDRectangle();
             pdRectangle.setLowerLeftX(startX);
-            pdRectangle.setLowerLeftY(sy - text.getContentHeight() * resCoef);
-            pdRectangle.setUpperRightX(startX + text.getContentWidth() * resCoef);
+            pdRectangle.setLowerLeftY(sy - text.getContentHeight());
+            pdRectangle.setUpperRightX(startX + text.getContentWidth());
             pdRectangle.setUpperRightY(sy);
             link.setRectangle(pdRectangle);
             page.getAnnotations().add(link);
@@ -2117,135 +1943,22 @@ public class PDFRenderer implements BoxRenderer
     {
         // counts the distance between top of the document and the start/end of
         // the page
-        float pageStart = i * pageFormat.getHeight();
-        float pageEnd = (i + 1) * pageFormat.getHeight();
+        float pageStart = i * pdf.getPageHeight();
+        float pageEnd = (i + 1) * pdf.getPageHeight();
 
         // checks if the whole text is out of the page
-        if (item.getAbsoluteContentY() * resCoef + plusOffset > pageEnd
-                || (item.getAbsoluteContentY() + item.getHeight()) * resCoef + plusOffset < pageStart)
+        if (item.getAbsoluteContentY() + plusOffset > pageEnd
+                || (item.getAbsoluteContentY() + item.getHeight()) + plusOffset < pageStart)
             return;
 
         PDFVisualContext ctx = (PDFVisualContext) item.getVisualContext();
-        final float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef);
+        final float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize());
         final float leading = 2f * fontSize;
         
         // write to PDF
         writeBullet(item, plusOffset, leading);
     }
     
-    /////////////////////////////////////////////////////////////////////////
-    // USES APACHE PDFBOX FUNCTIONS TO CREATE PDF DOCUMENT
-    //
-    // - all parameters are in CSSBox form (y coordinate is distance from top)
-    // - transforms data to Apache PDFBox form and creates PDF document using
-    // Apache PDFBox functions
-    /////////////////////////////////////////////////////////////////////////
-
-    /**
-     * Creates the document content stream.
-     * @throws IOException 
-     */
-    private void initContentStream() throws IOException
-    {
-        content = new PDPageContentStream(doc, page);
-    }
-    
-    /**
-     * Closes the document content stream.
-     * @throws IOException 
-     */
-    private void closeContentStream() throws IOException
-    {
-        content.close();
-    }
-
-    /**
-     * Inserts N pages to PDF document using PDFBox
-     */
-    private void insertNPagesPDFBox(int pageCount)
-    {
-        for (int i = 1; i < pageCount; i++)
-        {
-            PDPage page = new PDPage(pageFormat);
-            doc.addPage(page);
-        }
-    }
-
-    /**
-     * Changes recent page using PDFBox
-     * @throws IOException 
-     */
-    private void changeCurrentPageToPDFBox(int i) throws IOException
-    {
-        page = (PDPage) doc.getDocumentCatalog().getPages().get(i);
-        content.close();
-        content = new PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true);
-    }
-
-    /**
-     * Inserts background to whole recent PDF page using PDFBox
-     * @throws IOException 
-     */
-    private void drawBgToWholePagePDFBox(Color bgColor) throws IOException
-    {
-        setNonStrokingColor(bgColor);
-        content.addRect(0, 0, pageFormat.getWidth(), pageFormat.getHeight());
-        content.fill();
-    }
-
-    /**
-     * Inserts rectangle to recent PDF page using PDFBox
-     * @throws IOException 
-     */
-    private void drawRectanglePDFBox(float lineWidth, Color bgColor, float x, float y, float width, float height) throws IOException
-    {
-        if (bgColor != null)
-        {
-            content.setLineWidth(lineWidth);
-            setNonStrokingColor(bgColor);
-            content.addRect(x, y, width, height);
-            content.fill();
-        }
-    }
-
-    private void drawCirclePDFBox(float lineWidth, Color color, float cx, float cy, float r, boolean fill) throws IOException 
-    {
-        final float k = 0.552284749831f;
-        if (fill)
-        {
-            setNonStrokingColor(color);
-        }
-        else
-        {
-            content.setLineWidth(lineWidth);
-            setStrokingColor(color);
-        }
-        content.moveTo(cx - r, cy);
-        content.curveTo(cx - r, cy + k * r, cx - k * r, cy + r, cx, cy + r);
-        content.curveTo(cx + k * r, cy + r, cx + r, cy + k * r, cx + r, cy);
-        content.curveTo(cx + r, cy - k * r, cx + k * r, cy - r, cx, cy - r);
-        content.curveTo(cx - k * r, cy - r, cx - r, cy - k * r, cx - r, cy);
-        if (fill)
-            content.fill();
-        else
-            content.stroke();
-    }    
-    
-    /**
-     * Inserts image to recent PDF page using PDFBox
-     * @throws IOException 
-     */
-    private void insertImagePDFBox(BufferedImage img, float x, float y, float width, float height) throws IOException
-    {
-        // transform X,Y coordinates to Apache PDFBox format
-        y = pageFormat.getHeight() - height - y;
-
-        // PDXObjectImage ximage = new PDPixelMap(doc, img);
-        // content.drawXObject(ximage, x, y, width, height);
-        PDImageXObject ximage = LosslessFactory.createFromImage(doc, img);
-        content.drawImage(ximage, x, y, width, height);
-    }
-
     /**
      * 
      * @param lb
@@ -2258,33 +1971,33 @@ public class PDFRenderer implements BoxRenderer
         if (lb.hasVisibleBullet())
         {
             PDFVisualContext ctx = (PDFVisualContext) lb.getVisualContext();
-            float x = (lb.getAbsoluteContentX() - 1.2f * ctx.getEm()) * resCoef;
-            float y = ((lb.getAbsoluteContentY() - 0.5f * ctx.getEm()) * resCoef + plusOffset) % pageFormat.getHeight();
-            y = pageFormat.getHeight() - y - leading * resCoef;
-            float r = (0.4f * ctx.getEm()) * resCoef;
+            float x = (lb.getAbsoluteContentX() - 1.2f * ctx.getEm());
+            float y = ((lb.getAbsoluteContentY() - 0.5f * ctx.getEm()) + plusOffset) % pdf.getPageHeight();
+            y = pdf.getPageHeight() - y - leading;
+            float r = (0.4f * ctx.getEm());
             final Color color = ctx.getColor();
 
             switch (lb.getListStyleType())
             {
                 case "circle":
-                    drawCirclePDFBox(1.0f * resCoef, color, x + r / 2, y - r / 2, r / 2, false);
+                    pdf.drawCircle(1.0f, color, x + r / 2, y - r / 2, r / 2, false);
                     break;
                 case "square":
-                    drawRectanglePDFBox(1, color, x, y - r, r, r);
+                    pdf.drawRectangle(1, color, x, y - r, r, r);
                     break;
                 case "disc":
-                    drawCirclePDFBox(1.0f * resCoef, color, x + r / 2, y - r / 2, r / 2, true);
+                    pdf.drawCircle(1.0f, color, x + r / 2, y - r / 2, r / 2, true);
                     break;
                 default:
-                    float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize() * resCoef);
+                    float fontSize = CSSUnits.pixels(ctx.getFontInfo().getSize());
                     boolean isBold = ctx.getFontInfo().isBold();
-                    float letterSpacing = CSSUnits.pixels(ctx.getLetterSpacing() * resCoef);
+                    float letterSpacing = CSSUnits.pixels(ctx.getLetterSpacing());
                     PDFont font = ctx.getFont();
                     float xofs = ctx.stringWidth(lb.getMarkerText());
-                    float tx = (lb.getAbsoluteContentX() - xofs) * resCoef;
+                    float tx = (lb.getAbsoluteContentX() - xofs);
                     float yofs = lb.getFirstInlineBoxBaseline() - ctx.getBaselineOffset(); //to align the font baseline with the item box baseline
-                    float ty = ((lb.getAbsoluteContentY() + yofs) * resCoef + plusOffset) % pageFormat.getHeight();
-                    writeTextPDFBox(tx, ty, lb.getMarkerText(), font, fontSize, false, isBold, letterSpacing, leading);
+                    float ty = ((lb.getAbsoluteContentY() + yofs) + plusOffset) % pdf.getPageHeight();
+                    pdf.writeText(tx, ty, lb.getMarkerText(), font, fontSize, false, isBold, letterSpacing, leading);
                     break;
             }
         }
@@ -2311,91 +2024,10 @@ public class PDFRenderer implements BoxRenderer
         {
             final float[][] offsets = text.getWordOffsets(words);
             for (int i = 0; i < words.length; i++)
-                writeTextPDFBox(x + offsets[i][0] * resCoef, y, words[i], font, fontSize, isUnderlined, isBold, letterSpacing, leading);
+                pdf.writeText(x + offsets[i][0], y, words[i], font, fontSize, isUnderlined, isBold, letterSpacing, leading);
         }
         else
-            writeTextPDFBox(x, y, text.getText(), font, fontSize, isUnderlined, isBold, letterSpacing, leading);
-    }
-    
-    /**
-     * Writes String to recent PDF page using PDFBox.
-     * @param x
-     * @param y
-     * @param textToInsert
-     * @param font
-     * @param fontSize
-     * @param isUnderlined
-     * @param isBold
-     * @param letterSpacing
-     * @param leading
-     * @throws IOException 
-     */
-    private void writeTextPDFBox(float x, float y, String textToInsert, PDFont font, float fontSize,
-            boolean isUnderlined, boolean isBold, float letterSpacing, float leading) throws IOException
-    {
-        // transform X,Y coordinates to Apache PDFBox format
-        y = pageFormat.getHeight() - y - leading * resCoef;
-
-        content.beginText();
-        content.setFont(font, fontSize);
-        content.setCharacterSpacing(letterSpacing);
-        content.newLineAtOffset(x, y);
-        try
-        {
-            content.showText(textToInsert);
-        } catch (IllegalArgumentException e)
-        {
-            // NOTE: seems to happen for embedded icon fonts like glyphicons
-            // and fa, add space so there is some text otherwise PDFBox
-            // throws IllegalStateException: subset is empty; these work
-            // with SVGRenderer
-            content.showText(" ");
-            System.err.println("Error: " + e.getMessage());
-        }
-        content.endText();
-
-        // underlines text if text is set underlined
-        if (isUnderlined)
-        {
-            content.setLineWidth(1);
-            float strokeWidth = font.getStringWidth(textToInsert) / 1000 * fontSize;
-            float lineHeightCalibration = 1f;
-            float yOffset = fontSize / 6.4f;
-            if (isBold)
-            {
-                lineHeightCalibration = 1.5f;
-                yOffset = fontSize / 5.7f;
-            }
-
-            content.addRect(x, y - yOffset, strokeWidth, resCoef * lineHeightCalibration);
-            content.fill();
-        }
-    }
-
-    /**
-     * Sets the stroking color for the content stream including the alpha channel.
-     * @param color a CSS color to set
-     * @throws IOException
-     */
-    private void setStrokingColor(Color color) throws IOException
-    {
-        content.setStrokingColor(toPDColor(color));
-        PDExtendedGraphicsState graphicsState = new PDExtendedGraphicsState();
-        graphicsState.setStrokingAlphaConstant(color.getAlpha() / 255.0f);
-        content.setGraphicsStateParameters(graphicsState);
-    }
-    
-    /**
-     * Sets the non-stroking color for the content stream including the alpha channel.
-     * @param color a CSS color to set
-     * @throws IOException
-     */
-    private void setNonStrokingColor(Color color) throws IOException
-    {
-        content.setNonStrokingColor(toPDColor(color));
-        PDExtendedGraphicsState graphicsState = new PDExtendedGraphicsState();
-        graphicsState.setNonStrokingAlphaConstant(color.getAlpha() / 255.0f);
-        content.setGraphicsStateParameters(graphicsState);
+            pdf.writeText(x, y, text.getText(), font, fontSize, isUnderlined, isBold, letterSpacing, leading);
     }
     
     //==================================================================================================
@@ -2433,15 +2065,6 @@ public class PDFRenderer implements BoxRenderer
         return clr;
     }
 
-    private PDColor toPDColor(Color color)
-    {
-        if (color == null)
-            return null;
-        float[] components = new float[] {
-                color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f };
-        return new PDColor(components, PDDeviceRGB.INSTANCE);
-    }
-    
     /**
      * Examines the given element and all its parent elements in order to find the "a" element.
      * @param e the child element to start with

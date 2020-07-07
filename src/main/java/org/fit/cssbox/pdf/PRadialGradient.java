@@ -27,7 +27,7 @@ import cz.vutbr.web.css.TermFunction.Gradient.ColorStop;
  * 
  * @author Nguyen Hoang Duong
  */
-public class RadialGradient
+public class PRadialGradient
 {
     // coordinates of center point
     float cx;

@@ -60,12 +60,9 @@ public class BorderRadius
      *            of the border
      * @param elem
      *            the element with border-radius property
-     * @param resCoef
-     *            the value which is used to resize the elements in different
-     *            PDF page format
      */
     public void setCornerRadius(TermList topLeftCorner, TermList topRightCorner, TermList botLeftCorner,
-            TermList botRightCorner, ElementBox elem, float resCoef)
+            TermList botRightCorner, ElementBox elem)
     {
         CSSDecoder dec = new CSSDecoder(elem.getVisualContext());
         Rectangle bounds = elem.getAbsoluteBorderBounds();
@@ -85,8 +82,6 @@ public class BorderRadius
                 else
                     topRightX = topRightY;
             }
-            topRightX = topRightX * resCoef; // transform radiuses with ratio of page
-            topRightY = topRightY * resCoef;
         }
         if (topLeftCorner != null)
         {
@@ -103,8 +98,6 @@ public class BorderRadius
                 else
                     topLeftX = topLeftY;
             }
-            topLeftX = topLeftX * resCoef;
-            topLeftY = topLeftY * resCoef;
         }
         if (botRightCorner != null)
         {
@@ -121,8 +114,6 @@ public class BorderRadius
                 else
                     botRightX = botRightY;
             }
-            botRightX = botRightX * resCoef;
-            botRightY = botRightY * resCoef;
         }
         if (botLeftCorner != null)
         {
@@ -132,8 +123,6 @@ public class BorderRadius
             if (botLeftX == botLeftY) isCycle = true;
             if (botLeftX > bounds.width / 2) botLeftX = bounds.width / 2;
             if (botLeftY > bounds.height / 2) botLeftY = bounds.height / 2;
-            botLeftX = botLeftX * resCoef;
-            botLeftY = botLeftY * resCoef;
             if (isCycle)
             {
                 if (botLeftX < botLeftY)
